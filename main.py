@@ -911,7 +911,7 @@ class AtualizadorApp(ctk.CTk):
     def save_settings_manually(self):
         self.save_ui_to_config()
         self.load_config_into_ui() # Refreshes recap labels
-        messagebox.showinfo("Sucesso", "Configurações salvas com sucesso no config.json!")
+        messagebox.showinfo("Sucesso", "Configurações salvas com sucesso!")
 
     def on_closing(self):
         try:
