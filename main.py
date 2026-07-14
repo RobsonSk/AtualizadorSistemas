@@ -791,6 +791,7 @@ class AtualizadorApp(ctk.CTk):
         self.dest_server_lbl.configure(text=f"3Camadas Server: {p_server}")
         self.dest_client_lbl.configure(text=f"3Camadas Client: {p_client}")
 
+        self.update_db_credentials_display()
         self.loading_config = False
 
     def save_ui_to_config(self):
@@ -948,25 +949,29 @@ class AtualizadorApp(ctk.CTk):
             self.ftp_pass_btn.configure(text="🔒")
             self.ftp_password_visible = True
 
-    def toggle_db_credentials(self):
+    def update_db_credentials_display(self):
+        c = self.app_config
+        u = c.get("db_user", "Não Configurado")
+        s = c.get("db_schema", "Não Configurado")
+        n = c.get("db_name", "Não Configurado")
+        p = c.get("db_password", "Não Configurado")
+
         if self.db_credentials_visible:
-            self.db_user_lbl.configure(text="Usuário: ••••••••")
-            self.db_schema_lbl.configure(text="Schema/Host: ••••••••")
-            self.db_name_lbl.configure(text="Service Name: ••••••••")
-            self.db_pass_lbl.configure(text="Senha: ••••••••")
-            self.db_toggle_btn.configure(text="Exibir Credenciais")
-            self.db_credentials_visible = False
-        else:
-            u = self.app_config.get("db_user", "Não Configurado")
-            s = self.app_config.get("db_schema", "Não Configurado")
-            n = self.app_config.get("db_name", "Não Configurado")
-            p = self.app_config.get("db_password", "Não Configurado")
             self.db_user_lbl.configure(text=f"Usuário: {u}")
             self.db_schema_lbl.configure(text=f"Schema/Host: {s}")
             self.db_name_lbl.configure(text=f"Service Name: {n}")
             self.db_pass_lbl.configure(text=f"Senha: {p}")
             self.db_toggle_btn.configure(text="Ocultar Credenciais")
-            self.db_credentials_visible = True
+        else:
+            self.db_user_lbl.configure(text=f"Usuário: {len(u) * '•' if u else '••••••••'}")
+            self.db_schema_lbl.configure(text=f"Schema/Host: {len(s) * '•' if s else '••••••••'}")
+            self.db_name_lbl.configure(text=f"Service Name: {len(n) * '•' if n else '••••••••'}")
+            self.db_pass_lbl.configure(text=f"Senha: {len(p) * '•' if p else '••••••••'}")
+            self.db_toggle_btn.configure(text="Exibir Credenciais")
+
+    def toggle_db_credentials(self):
+        self.db_credentials_visible = not self.db_credentials_visible
+        self.update_db_credentials_display()
 
     def toggle_transition_year_field(self):
         if self.transition_year_var.get():
@@ -1256,7 +1261,7 @@ class AtualizadorApp(ctk.CTk):
         details_text = (
             "Desenvolvedor: Robson Santos\n"
             "Contato: robsonshk@gmail.com\n"
-            "Versão do Programa: 1.2.5\n"
+            "Versão do Programa: 1.2.6\n"
             "Finalidade: Facilitar a automação e controle do processo de atualizações de sistemas NBS."
         )
         ctk.CTkLabel(info_frame, text=details_text, justify="left", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")
@@ -1268,6 +1273,11 @@ class AtualizadorApp(ctk.CTk):
         self.changelog_box.grid(row=3, column=0, padx=20, pady=(0, 20), sticky="nsew")
 
         changelog_text = (
+            "=== Versão 1.2.6  ===\n"
+            "- Implementada criptografia simétrica (XOR + Base64) nas configurações locais, ocultando credenciais de banco e FTP contra visualização em plain-text.\n"
+            "- Redirecionado o armazenamento das configurações para as pastas padrão do usuário (%APPDATA% no Windows e ~/.config no Linux) com o nome 'config.enc'.\n"
+            "- Criado fluxo de migração automática e exclusão segura do arquivo 'config.json' legado.\n"
+            "- Corrigido flickering/redimensionamento no grid de credenciais de banco de dados na aba de Scripts.\n\n"
             "=== Versão 1.2.5  ===\n"
             "- Corrigida globalmente a cor do texto dos botões, menus de opções e botões segmentados no modo claro.\n"
             "- A correção foi aplicada diretamente no dicionário global de temas (ThemeManager.theme), evitando código hardcoded nos widgets.\n\n"
@@ -1367,10 +1377,10 @@ class AtualizadorApp(ctk.CTk):
 
         linx_changelog_text = (
             "=== Versão 1.0.7 ===\n"
-            "- Adicionada opção para download do Linx DMS Integrador (arquivo LinxDMSIntegrador.zip).\n"
-            "- Adicionado monitoramento e controle de estado do serviço Windows correspondente: dmLDIServer.\n"
-            "- Integrada descompactação automática do Integrador com execução elevada como Administrador para arquivos .exe e .msi internos.\n"
-            "- Adicionados templates de URLs e configurações personalizáveis de serviço/template para o Integrador.\n\n"
+            "- Adicionada opção para download do Linx DMS Integrador (arquivo LinxDMSIntegrador.zip) e monitoramento do serviço dmLDIServer.\n"
+            "- Ajustadas pastas padrão do utilitário de exclusão Linx para C:\\Apollo e C:\\3camadas, e adicionado botão de busca para pasta customizada.\n"
+            "- Implementada criptografia simétrica (XOR + Base64) das configurações locais gravadas em Appdata/Roaming ou ~/.config/AtualizadorSistemas/config.enc.\n"
+            "- Integrada descompactação e execução elevada como Administrador para arquivos .exe e .msi internos do Integrador.\n\n"
             "=== Versão 1.0.6 ===\n"
             "- Adicionada aba 'Utilitários Linx' com exclusão de arquivos executáveis (.exe) e bibliotecas (.dll).\n"
             "- Suporte a filtros de pesquisa inteligentes com padrões Glob (ex: *2026*.dll) e Expressões Regulares (Regex).\n"

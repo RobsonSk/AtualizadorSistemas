@@ -61,9 +61,14 @@ O sistema possui comportamento **Cross-Platform**: funciona plenamente no Window
 
 ---
 
-## ⚙️ Configurações (`config.json`)
+## ⚙️ Configurações (Criptografia e Armazenamento)
 
-O arquivo `config.json` armazena as configurações locais. Ele é criado automaticamente se não estiver presente na inicialização da aplicação, utilizando os valores limpos contidos no arquivo `config.py`.
+O atualizador utiliza um sistema seguro e centralizado para gerenciar parâmetros locais de configuração:
+* **Criptografia Simétrica (XOR + Base64)**: O arquivo de configurações é criptografado e salvo sob o formato `.enc` (com extensão `config.enc`), ocultando dados de banco de dados e credenciais de FTP contra visualização/edição acidental em editores comuns (como Bloco de Notas).
+* **Diretório Padrão por S.O.**:
+  * **Windows**: `%APPDATA%\AtualizadorSistemas\config.enc` (normalmente mapeado em `AppData\Roaming\AtualizadorSistemas\config.enc`).
+  * **Linux/macOS**: `~/.config/AtualizadorSistemas/config.enc`.
+* **Migração Automática**: Caso exista um arquivo legado `config.json` em texto plano na mesma pasta do executável, a aplicação lerá os parâmetros dele, salvará no formato criptografado no novo diretório do S.O., e excluirá o arquivo legado `.json` para proteção dos dados do usuário.
 
 ---
 
