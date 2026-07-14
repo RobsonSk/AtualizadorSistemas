@@ -1,132 +1,114 @@
-# Atualizador NBS - GUI
+# Atualizador de Sistemas - GUI (NBS & Linx DMS)
 
-Aplicação Desktop desenvolvida em Python com **CustomTkinter** projetada para automatizar o download de módulos oficiais, instaladores (NFE), marcas (interfaces de marcas) e scripts do FTP, executar scripts de banco de dados como administrador (elevação UAC no Windows) e distribuir os arquivos atualizados localmente e para servidores da rede.
+Aplicação Desktop desenvolvida em Python com **CustomTkinter** projetada para centralizar e automatizar o processo de atualização de dois dos principais ERPs: **NBS** e **Linx DMS**. A aplicação gerencia downloads assíncronos, descompactação inteligente, controle de serviços do Windows (iniciar/parar), execução elevada de instaladores e utilitários de limpeza de arquivos obsoletos.
 
-O sistema possui comportamento **Cross-Platform**: funciona plenamente no Windows e simula de forma segura no Linux as operações do sistema operacional Windows (como a elevação de privilégios e cópias UNC `\\IP\c$\NBS`) para permitir testes completos sem causar falhas de sistema no Linux.
+O sistema possui comportamento **Cross-Platform**: funciona plenamente no Windows e simula de forma segura no Linux as operações do sistema operacional Windows (como a elevação de privilégios e consultas/comandos de serviços via `sc`) para permitir testes completos sem causar falhas no ambiente de desenvolvimento.
 
 ---
 
 ## 🛠️ Requisitos de Sistema
 
 - **Python 3.10 ou superior** instalado.
-- Acesso à internet/rede para conexões FTP e cópias de rede.
+- Acesso à internet/rede para conexões FTP e downloads HTTP/HTTPS.
+- Privilégios de Administrador no Windows (caso precise iniciar/parar serviços ou executar scripts SQL/instaladores).
 
 ---
 
 ## 📂 Estrutura do Projeto
 
 *   `main.py`: Código-fonte principal que renderiza a interface gráfica moderna em CustomTkinter, gerencia as threads em background e manipula os componentes visuais.
-*   `ftp_client.py`: Manipulador das conexões FTP. Implementa listagem de arquivos e subpastas (com fallback de detecção automática de diretórios) e downloads reportando progresso.
+*   `ftp_client.py`: Manipulador das conexões FTP para o NBS. Implementa listagem de arquivos e subpastas e downloads com progresso.
 *   `utils.py`: Funções utilitárias como detecção de datas históricas, backups locais de arquivos `.exe`, execução de processos de forma elevada (UAC) e cópias de arquivos recursivas.
 *   `config.py`: Gerencia a leitura, escrita e preenchimento de valores padrão no arquivo `config.json`.
 *   `requirements.txt`: Dependências do projeto (`customtkinter` e `pyinstaller`).
-*   `build.bat`: Script automatizado para compilação em lote do executável no Windows.
+*   `build.bat`: Script de lote para compilação automatizada do executável `AtualizadorSistemas.exe` no Windows.
+*   `.gitignore`: Arquivo de exclusão do Git configurado para ignorar caches, ambientes virtuais (`venv/`), pastas locais de atualização e o arquivo `config.json`.
+
+---
+
+## 💻 Recursos e Funcionalidades
+
+### 1. Central de Seleção de Sistemas (Tela Inicial)
+*   Interface em formato de painel moderno com cards de largura ajustada (350px) para direcionar o usuário para a gerência de atualizações do **Sistema NBS** ou **Sistema Linx DMS**.
+
+### 2. Sistema NBS (FTP & Distribuição)
+*   **Downloads de Módulos (FTP)**: Consulta inteligente de datas de arquivos no servidor FTP usando o comando `MDTM` para baixar apenas os módulos modificados a partir da data de corte.
+*   **Instalação Inicial**: Opção para ignorar a data de corte e forçar o download completo de todos os módulos oficiais e DLLs de apoio.
+*   **Execução de Scripts SQL**: Identifica e executa scripts de banco de dados (`.sql` ou `.exe` compilados) com elevação de privilégios (UAC).
+*   **Distribuição de Rede**: Distribui de forma concorrente os arquivos atualizados para múltiplos servidores da rede local cadastrados na lista.
+*   **Backup Automático**: Compacta a pasta de backup antiga no formato `.zip` com opção de excluir o diretório descompactado de origem para economizar espaço em disco.
+
+### 3. Sistema Linx DMS (HTTP & Serviços)
+*   **Downloads Modulares**: Baixa pacotes evolutivos Delphi (Padrão), 3 Camadas Server, 3 Camadas Client, Instalador Web, DMS Comissões, Apoio (Troca Fornecedor, Troca Série, Verifica Diária) e o **Linx DMS Integrador**.
+*   **Descompactação e Atualização Automatizada**:
+    *   **Arquivos Normais (Delphi)**: Extraídos e copiados diretamente para `C:\Apollo\Atualiza`.
+    *   **Servidor 3 Camadas**: Extraídos e copiados diretamente para `C:\3Camadas`.
+    *   **Cliente 3 Camadas**: Extraídos e copiados diretamente para `C:\3Camadas\Atualiza`.
+    *   **Instalador Web / Integrador**: Após o download do `LinxDMS.zip` ou `LinxDMSIntegrador.zip`, a ferramenta varre a pasta extraída, encontra o instalador nativo (`.exe` ou `.msi`) e o executa com **privilégios elevados como Administrador**.
+*   **Painel de Monitoramento de Serviços**:
+    *   Exibe o status em tempo real de até 4 serviços cruciais no Windows: `DFeServico`, `RedirecionaDatasnap`, `VerificaServer3Camadas` e `dmLDIServer` (Serviço Integrador).
+    *   Fornece botões para **Iniciar** ou **Parar** cada serviço de forma totalmente assíncrona, evitando travamentos na tela.
+*   **Aba Utilitários Linx (Limpeza de Executáveis e DLLs)**:
+    *   Lista todos os arquivos executáveis e bibliotecas das pastas selecionadas.
+    *   Focado por padrão nas pastas **`C:\Apollo`** e **`C:\3camadas`**.
+    *   **Botão de Pesquisa Customizada**: Permite selecionar interativamente qualquer outra pasta do disco para realizar o escaneamento.
+    *   **Pesquisa Avançada (Glob e Regex)**: Filtra os arquivos usando curingas comuns (Ex: `*2026*.dll`) ou expressões regulares avançadas (Ex: `^DMS_.*\.exe$`).
+
+### 4. Configurações Dinâmicas e Tema Sincronizado
+*   **Templates de URL**: Permite configurar e salvar todas as URLs HTTP utilizadas no download do Linx através de curingas dinâmicos de `{version}` e `{package}`.
+*   **Nomes de Serviços customizados**: Permite alterar o nome de sistema dos serviços de cada cliente diretamente no painel.
+*   **Tema Visual Unificado**: Seletor de modo de aparência ("Dark", "Light", "System") integrado e sincronizado em tempo real entre as configurações do NBS e as do Linx.
 
 ---
 
 ## ⚙️ Configurações (`config.json`)
 
-Ao iniciar o aplicativo pela primeira vez, o arquivo `config.json` será criado automaticamente na mesma pasta do executável/script. Você pode pré-configurá-lo antes de distribuir a ferramenta:
-
-```json
-{
-    "ftp_modules_url": "ftp://nbsi.com.br/sistemadelphi/modulos/oficiais",
-    "ftp_scripts_url": "ftp://nbsi.com.br/sistemadelphi/scripts",
-    "ftp_nfe_url": "ftp://nbsi.com.br/sistemadelphi/modulos/nfe",
-    "ftp_interfaces_url": "ftp://nbsi.com.br/sistemadelphi/modulos/interfaces",
-    "ftp_dll_url": "ftp://nbsi.com.br/sistemadelphi/modulos/dll",
-    "ftp_user": "nbs",
-    "ftp_password": "nbs",
-    "atualizacao_path_win": "C:\\Atualizacao",
-    "nbs_path_win": "C:\\NBS",
-    "atualizacao_path_linux": "./Atualizacao",
-    "nbs_path_linux": "./NBS_Local",
-    "servers": [],
-    "db_user": "nbs_db_user",
-    "db_password": "nbs_db_password",
-    "db_schema": "nbs_schema",
-    "copy_local": true,
-    "copy_servers": true,
-    "download_nfe": false,
-    "download_interfaces": false,
-    "initial_installation": false,
-    "selected_interfaces": [],
-    "transition_year_enabled": false,
-    "transition_year_value": "2025"
-}
-```
-
-> 💡 **Dica**: Preencha as chaves `db_user`, `db_password` e `db_schema` com os dados padrão do banco do seu cliente no `config.json` antes de enviar o `.exe` a ele. O botão "Exibir Credenciais" na Aba 2 lerá essas chaves para facilitar a visualização da senha na hora da atualização.
+O arquivo `config.json` armazena as configurações locais. Ele é criado automaticamente se não estiver presente na inicialização da aplicação, utilizando os valores limpos contidos no arquivo `config.py`.
 
 ---
 
-## 🚀 Como Executar em Modo de Desenvolvimento/Testes
+## 🚀 Como Executar em Desenvolvimento
 
-### No Linux
-
-1. Instale as dependências no ambiente virtual (`venv`) da pasta do projeto:
+### No Linux/macOS
+1. Crie e ative o ambiente virtual:
    ```bash
-   ./venv/bin/pip install -r requirements.txt
+   python3 -m venv venv
+   source venv/bin/activate
    ```
-2. Execute o script principal:
+2. Instale as dependências:
    ```bash
-   ./venv/bin/python main.py
+   pip install -r requirements.txt
+   ```
+3. Execute o atualizador:
+   ```bash
+   python main.py
    ```
 
-### No Windows (Modo de Script)
-
-1. Abra o Terminal/Prompt de Comando na pasta do projeto e crie o ambiente virtual:
+### No Windows
+1. Abra o CMD ou PowerShell na pasta do projeto e configure o ambiente virtual:
    ```cmd
    python -m venv venv
-   ```
-2. Ative o ambiente virtual:
-   ```cmd
    venv\Scripts\activate
    ```
-3. Instale as dependências:
+2. Instale as dependências:
    ```cmd
    pip install -r requirements.txt
    ```
-4. Execute o script principal:
+3. Execute a aplicação:
    ```cmd
    python main.py
    ```
 
 ---
 
-## 🧪 Processo de Validação de Fluxos (No Linux)
+## 📦 Como Buildar no Windows (Geração do `.exe` Único)
 
-Como o atualizador foi projetado com suporte multiplataforma para testes locais, você pode criar uma estrutura simulada na pasta do projeto para verificar o comportamento:
+Para gerar o executável independente **`AtualizadorSistemas.exe`** para distribuição aos clientes:
 
-1.  **Criação de Pastas de Simulação**:
-    Crie subpastas e arquivos fictícios para o NBS rodando os seguintes comandos no terminal Linux dentro da pasta do projeto:
-    ```bash
-    mkdir -p Atualizacao/01072026
-    mkdir -p Atualizacao/05072026
-    mkdir -p NBS_Local
-    touch NBS_Local/modulo1.exe
-    touch NBS_Local/modulo2.exe
-    ```
-2.  **Validação dos Passos**:
-    - **Aba 1 (Download)**: A "Data de Corte" autodetectada deve ser `01/07/2026` (a penúltima pasta anterior a `05072026`). Ao clicar em "Iniciar Processo", verifique se o backup de `modulo1.exe` e `modulo2.exe` é gerado dentro de `Atualizacao/<dataHoje>/backup/` e se os arquivos reais do FTP são baixados para `Atualizacao/<dataHoje>/Modulos/`.
-    - **Aba 1 (Instalação Inicial)**: Marque "Instalação Inicial". O campo da data de corte ficará desabilitado (esmaecido). Ao iniciar o download, ele baixará todos os módulos oficiais sem limite de data e buscará todas as DLLs de `/modulos/dll`.
-    - **Aba 2 (Scripts)**: O executável do script de banco baixado será auto-selecionado no campo superior. O botão de execução irá simular em tela a espera de conclusão do script (aguarda 2s).
-    - **Aba 3 (Distribuição)**: Cadastre IPs de servidores (ex: `192.168.1.150`). Ao clicar em "Distribuir Atualização", a cópia para a sua máquina local (`NBS_Local`) será real e a distribuição de rede para os IPs será simulada exibindo relatórios de sucesso/falha individualmente.
-
----
-
-## 📦 Como Buildar no Windows (.exe independente)
-
-Para gerar um arquivo executável autônomo que **não exige a instalação do Python** na máquina do cliente final, siga estes passos em um computador rodando **Windows**:
-
-1.  Garanta que o **Python** esteja instalado e a opção "Add Python to PATH" tenha sido marcada no instalador.
-2.  Transfira a pasta do projeto completa para a máquina Windows.
-3.  Dê dois cliques no arquivo **`build.bat`**.
-4.  O console do Windows se abrirá e o script executará automaticamente:
-    *   A instalação das dependências `customtkinter` e `pyinstaller`.
-    *   O comando de empacotamento:
-        `pyinstaller --noconsole --onefile --collect-all customtkinter --name="AtualizadorNBS" main.py`
-        *(A flag `--collect-all customtkinter` garante que todas as fontes, temas e arquivos Tcl do CustomTkinter sejam empacotados dentro do .exe para evitar falhas visuais no Windows).*
-5.  Quando o processo terminar, o arquivo compilado estará pronto para uso na pasta **`dist\AtualizadorNBS.exe`**.
-
-Você só precisará distribuir o arquivo `AtualizadorNBS.exe` (e opcionalmente o `config.json` pré-configurado) para o usuário final!
+1. Transfira a pasta do projeto para um computador com sistema operacional **Windows**.
+2. Dê dois cliques no arquivo **`build.bat`**.
+3. O script instalará as dependências listadas e executará o empacotamento com o PyInstaller:
+   ```cmd
+   pyinstaller --noconsole --onefile --collect-all customtkinter --name="AtualizadorSistemas" main.py
+   ```
+4. Após a conclusão, o executável consolidado estará localizado em **`dist\AtualizadorSistemas.exe`**.

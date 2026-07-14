@@ -1,6 +1,6 @@
 @echo off
 echo =============================================================
-echo Compilando o Atualizador NBS para Windows (.exe)
+echo Compilando o Atualizador de Sistemas para Windows (.exe)
 echo =============================================================
 echo 1. Instalando dependencias listadas em requirements.txt...
 pip install -r requirements.txt
@@ -13,7 +13,7 @@ if %errorlevel% neq 0 (
 echo.
 echo 2. Compilando com PyInstaller...
 echo [INFO] Coletando todos os pacotes e recursos do customtkinter...
-pyinstaller --noconsole --onefile --collect-all customtkinter --name="AtualizadorNBS" main.py
+pyinstaller --noconsole --onefile --collect-all customtkinter --name="AtualizadorSistemas" main.py
 
 if %errorlevel% neq 0 (
     echo [ERRO] Ocorreu uma falha durante a compilacao do executavel.
@@ -24,6 +24,6 @@ if %errorlevel% neq 0 (
 echo.
 echo =============================================================
 echo Compilacao concluida com sucesso!
-echo O arquivo independente esta em: dist\AtualizadorNBS.exe
+echo O arquivo independente esta em: dist\AtualizadorSistemas.exe
 echo =============================================================
 pause
