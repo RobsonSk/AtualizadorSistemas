@@ -1,0 +1,32 @@
+# Byte-compiled / optimized / DLL support
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.env
+
+# Configuration Files (containing local paths and credentials)
+config.json
+
+# Local directories created by the application for downloads/updates
+Atualizacao/
+AtualizacaoLinx/
+NBS_Local/
+Apollo/
+Apollo_Atualiza/
+3Camadas/
+3Camadas_Atualiza/
+scratch/
+
+# IDE files
+.idea/
+.vscode/
+
+# Build artifacts (PyInstaller)
+build/
+dist/
+*.spec
