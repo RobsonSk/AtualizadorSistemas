@@ -416,8 +416,8 @@ class AtualizadorApp(ctk.CTk):
     # ----------------- TAB 3.5: UTILITÁRIOS -----------------
     def setup_tab_utilities(self):
         tab = self.frame_utilities
-        tab.grid_columnconfigure(0, weight=1)
         tab.grid_rowconfigure(2, weight=1)
+        tab.grid_rowconfigure(3, weight=1)
 
         # Title
         ctk.CTkLabel(tab, text="Utilitários e Manutenção", font=ctk.CTkFont(size=20, weight="bold")).grid(row=0, column=0, padx=20, pady=(20, 5), sticky="w")
@@ -432,94 +432,244 @@ class AtualizadorApp(ctk.CTk):
         
         details_text = (
             "Esta ferramenta busca todos os arquivos executáveis (.exe) dentro da pasta local do NBS configurada.\n"
-            "Você poderá selecionar manualmente quais deseja excluir. Isso é útil para deletar cópias antigas e liberar espaço,\n"
-            "mantendo apenas os executáveis oficiais em uso."
+            "Permite selecionar de forma interativa a pasta, aplicar filtros Glob/Regex e marcar manualmente os arquivos a excluir.\n"
+            "Útil para limpar executáveis temporários ou antigos e economizar espaço."
         )
         ctk.CTkLabel(cleanup_frame, text=details_text, justify="left", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")
 
         self.cleanup_btn = ctk.CTkButton(cleanup_frame, text="Limpar Executáveis NBS", font=ctk.CTkFont(size=13, weight="bold"), height=35, command=self.open_nbs_cleanup_popup)
         self.cleanup_btn.grid(row=2, column=0, padx=15, pady=(0, 20), sticky="w")
 
+        # Extension cleanup card
+        ext_frame = ctk.CTkFrame(tab)
+        ext_frame.grid(row=3, column=0, padx=20, pady=10, sticky="nsew")
+        ext_frame.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(ext_frame, text="Limpeza de Arquivos por Extensão (NBS)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
+        
+        ext_details = (
+            "Esta ferramenta permite pesquisar e excluir arquivos de qualquer extensão específica (ex: .log, .tmp, .zip)\n"
+            "dentro das pastas do NBS ou outro diretório que você escolher.\n"
+            "Você define a extensão a ser buscada, filtra os resultados e seleciona manualmente quais remover."
+        )
+        ctk.CTkLabel(ext_frame, text=ext_details, justify="left", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")
+
+        self.ext_cleanup_btn = ctk.CTkButton(ext_frame, text="Limpar por Extensão NBS", font=ctk.CTkFont(size=13, weight="bold"), height=35, command=lambda: self.open_extension_cleanup_popup("nbs"))
+        self.ext_cleanup_btn.grid(row=2, column=0, padx=15, pady=(0, 20), sticky="w")
+
     def open_nbs_cleanup_popup(self):
-        """Abre uma janela pop-up modal para listar e selecionar arquivos exe da pasta NBS para exclusão."""
-        # Determine path
+        """Abre uma janela pop-up modal para listar, pesquisar por glob/regex, e excluir arquivos exe do NBS."""
         c = self.app_config
-        nbs_path = c.get("nbs_path_win", "C:\\NBS") if self.os_type == "Windows" else c.get("nbs_path_linux", "./NBS_Local")
 
         # Create window
         popup = ctk.CTkToplevel(self)
-        popup.title("Limpeza de Executáveis - NBS Local")
-        popup.geometry("520x520")
-        popup.minsize(450, 400)
+        popup.title("Limpeza de Executáveis - NBS")
+        popup.geometry("620x620")
+        popup.minsize(550, 480)
         popup.grab_set()  # Make modal
 
         # Title labels
-        ctk.CTkLabel(popup, text="Limpeza da Pasta NBS", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, padx=20, pady=(15, 5), sticky="w")
-        ctk.CTkLabel(popup, text=f"Diretório ativo: {os.path.abspath(nbs_path)}", font=ctk.CTkFont(size=11, slant="italic")).grid(row=1, column=0, padx=20, pady=(0, 10), sticky="w")
+        ctk.CTkLabel(popup, text="Utilitário de Limpeza NBS", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, padx=20, pady=(15, 5), sticky="w")
 
-        # Scroll frame for items
-        scroll_frame = ctk.CTkScrollableFrame(popup, label_text="Arquivos Executáveis (.exe) Encontrados")
-        scroll_frame.grid(row=2, column=0, padx=20, pady=10, sticky="nsew")
+        # Top Control Frame (Directory selection + Path details)
+        top_ctrl = ctk.CTkFrame(popup)
+        top_ctrl.grid(row=1, column=0, padx=20, pady=5, sticky="ew")
+        top_ctrl.grid_columnconfigure(0, weight=1)
+        top_ctrl.grid_columnconfigure(1, weight=3)
+        top_ctrl.grid_columnconfigure(2, weight=1)
         popup.grid_columnconfigure(0, weight=1)
-        popup.grid_rowconfigure(2, weight=1)
 
-        # Dictionary to track {file_path: BooleanVar}
-        checkboxes = {}
+        ctk.CTkLabel(top_ctrl, text="Pasta NBS a Limpar:", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=10, pady=5, sticky="w")
 
-        def refresh_file_list():
-            # Clear scroll frame
-            for widget in scroll_frame.winfo_children():
-                widget.destroy()
-            checkboxes.clear()
+        custom_path_var = ctk.StringVar(value="")
 
-            if not os.path.exists(nbs_path):
-                ctk.CTkLabel(scroll_frame, text="Erro: Caminho do NBS não encontrado.", font=ctk.CTkFont(slant="italic")).grid(row=0, column=0, padx=10, pady=10, sticky="w")
-                return
+        # Directory resolution helper
+        def get_resolved_path(dir_key):
+            if dir_key == "C:\\NBS":
+                return c.get("nbs_path_win", "C:\\NBS") if self.os_type == "Windows" else c.get("nbs_path_linux", "./NBS_Local")
+            elif dir_key == "Outro Diretório...":
+                return custom_path_var.get()
+            return ""
 
-            try:
-                exe_files = [f for f in os.listdir(nbs_path) if os.path.isfile(os.path.join(nbs_path, f)) and f.lower().endswith(".exe")]
-                exe_files.sort()
-            except Exception as read_err:
-                ctk.CTkLabel(scroll_frame, text=f"Erro ao ler diretório: {str(read_err)}", font=ctk.CTkFont(slant="italic")).grid(row=0, column=0, padx=10, pady=10, sticky="w")
-                return
+        # OptionMenu selection
+        dir_var = ctk.StringVar(value="C:\\NBS")
+        dir_label_path = ctk.CTkLabel(popup, text="Caminho: -", font=ctk.CTkFont(size=11, slant="italic"), anchor="w")
+        dir_label_path.grid(row=2, column=0, padx=20, pady=(2, 8), sticky="w")
 
-            if not exe_files:
-                ctk.CTkLabel(scroll_frame, text="Nenhum arquivo executável (.exe) encontrado.", font=ctk.CTkFont(slant="italic")).grid(row=0, column=0, padx=10, pady=10, sticky="w")
-                return
+        # Search/Filter Frame
+        filter_frame = ctk.CTkFrame(popup)
+        filter_frame.grid(row=3, column=0, padx=20, pady=5, sticky="ew")
+        filter_frame.grid_columnconfigure(0, weight=1)
 
-            for idx, filename in enumerate(exe_files):
-                full_file_path = os.path.join(nbs_path, filename)
-                
-                # Check file size & modified time for context
+        ctk.CTkLabel(filter_frame, text="Pesquisa / Filtro (Glob/Regex):", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=10, pady=(5, 0), sticky="w")
+        
+        filter_entry_frame = ctk.CTkFrame(filter_frame, fg_color="transparent")
+        filter_entry_frame.grid(row=1, column=0, padx=10, pady=5, sticky="ew")
+        filter_entry_frame.grid_columnconfigure(0, weight=1)
+
+        filter_entry = ctk.CTkEntry(filter_entry_frame, placeholder_text="Ex: *NBS*.exe ou ^modulo_.*\\.exe$")
+        filter_entry.grid(row=0, column=0, sticky="ew")
+
+        # Selection tracking dictionaries
+        all_files_found = []
+        file_checkboxes_widgets = []
+        checkbox_selections = {} # Stores {filepath: BooleanVar}
+
+        # Scroll frame for items list
+        scroll_frame = ctk.CTkScrollableFrame(popup, label_text="Arquivos Executáveis (.exe) Encontrados")
+        scroll_frame.grid(row=4, column=0, padx=20, pady=10, sticky="nsew")
+        popup.grid_rowconfigure(4, weight=1)
+
+        # Glob / Regex matching logic
+        import fnmatch
+        import re
+
+        def matches_pattern(filename, pattern):
+            if not pattern:
+                return True
+            pattern = pattern.strip()
+            if "*" in pattern or "?" in pattern:
                 try:
-                    stats = os.stat(full_file_path)
+                    return fnmatch.fnmatchcase(filename.lower(), pattern.lower())
+                except Exception:
+                    pass
+            try:
+                regex = re.compile(pattern, re.IGNORECASE)
+                return bool(regex.search(filename))
+            except Exception:
+                pass
+            return pattern.lower() in filename.lower()
+
+        # Render list based on filter
+        def populate_list():
+            # Clear widgets inside scroll frame
+            for w in file_checkboxes_widgets:
+                try:
+                    w.destroy()
+                except Exception:
+                    pass
+            file_checkboxes_widgets.clear()
+
+            target_path = get_resolved_path(dir_var.get())
+            dir_label_path.configure(text=f"Diretório ativo: {os.path.abspath(target_path)}")
+
+            if not os.path.exists(target_path):
+                err_lbl = ctk.CTkLabel(scroll_frame, text="Caminho do diretório não encontrado no sistema.", font=ctk.CTkFont(slant="italic"))
+                err_lbl.grid(row=0, column=0, padx=10, pady=10, sticky="w")
+                file_checkboxes_widgets.append(err_lbl)
+                return
+
+            filter_text = filter_entry.get().strip()
+
+            filtered_files = []
+            for f in all_files_found:
+                if matches_pattern(f, filter_text):
+                    filtered_files.append(f)
+
+            if not filtered_files:
+                empty_lbl = ctk.CTkLabel(scroll_frame, text="Nenhum executável corresponde à pesquisa.", font=ctk.CTkFont(slant="italic"))
+                empty_lbl.grid(row=0, column=0, padx=10, pady=10, sticky="w")
+                file_checkboxes_widgets.append(empty_lbl)
+                return
+
+            for idx, filename in enumerate(filtered_files):
+                full_path = os.path.join(target_path, filename)
+                
+                if full_path not in checkbox_selections:
+                    checkbox_selections[full_path] = ctk.BooleanVar(value=False)
+                
+                try:
+                    stats = os.stat(full_path)
                     size_mb = stats.st_size / (1024 * 1024)
                     mtime = datetime.fromtimestamp(stats.st_mtime).strftime("%d/%m/%Y %H:%M")
-                    details = f" ({size_mb:.1f} MB) - Modificado: {mtime}"
+                    details = f" ({size_mb:.2f} MB) - {mtime}"
                 except Exception:
                     details = ""
 
-                var = ctk.BooleanVar()
-                chk = ctk.CTkCheckBox(scroll_frame, text=f"{filename}{details}", variable=var)
-                chk.grid(row=idx, column=0, padx=10, pady=5, sticky="w")
-                checkboxes[full_file_path] = var
+                chk = ctk.CTkCheckBox(scroll_frame, text=f"{filename}{details}", variable=checkbox_selections[full_path])
+                chk.grid(row=idx, column=0, padx=10, pady=4, sticky="w")
+                file_checkboxes_widgets.append(chk)
 
-        # Load files initial list
-        refresh_file_list()
+        # Scans directory and resets files tracking
+        def browse_custom_dir():
+            from tkinter import filedialog
+            selected = filedialog.askdirectory(parent=popup, title="Selecionar pasta para limpeza")
+            if selected:
+                custom_path_var.set(selected)
+                dir_var.set("Outro Diretório...")
+                scan_directory()
+
+        def scan_directory():
+            all_files_found.clear()
+            checkbox_selections.clear()
+            
+            target_path = get_resolved_path(dir_var.get())
+            if dir_var.get() == "Outro Diretório..." and not target_path:
+                browse_custom_dir()
+                return
+
+            if os.path.exists(target_path):
+                try:
+                    for name in os.listdir(target_path):
+                        if os.path.isfile(os.path.join(target_path, name)):
+                            name_lower = name.lower()
+                            if name_lower.endswith(".exe"):
+                                all_files_found.append(name)
+                    all_files_found.sort()
+                except Exception as err:
+                    print(f"Erro ao escanear diretório: {str(err)}")
+            populate_list()
+
+        # Selection helpers for filtered items
+        def select_filtered(state):
+            filter_text = filter_entry.get().strip()
+            target_path = get_resolved_path(dir_var.get())
+            
+            for filename in all_files_found:
+                if matches_pattern(filename, filter_text):
+                    full_path = os.path.join(target_path, filename)
+                    if full_path in checkbox_selections:
+                        checkbox_selections[full_path].set(state)
+
+        # UI Actions
+        dir_menu = ctk.CTkOptionMenu(top_ctrl, variable=dir_var, values=["C:\\NBS", "Outro Diretório..."], command=lambda v: scan_directory())
+        dir_menu.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
+
+        btn_browse = ctk.CTkButton(top_ctrl, text="Pesquisar...", width=95, command=browse_custom_dir)
+        btn_browse.grid(row=0, column=2, padx=(0, 10), pady=5)
+
+        # Buttons in filter entry frame
+        btn_apply = ctk.CTkButton(filter_entry_frame, text="Filtrar", width=80, command=populate_list)
+        btn_apply.grid(row=0, column=1, padx=(5, 0))
+
+        btn_clear = ctk.CTkButton(filter_entry_frame, text="Limpar", width=80, fg_color="transparent", border_width=1, command=lambda: [filter_entry.delete(0, "end"), populate_list()])
+        btn_clear.grid(row=0, column=2, padx=(5, 0))
+
+        # Selection Control Row (Marcar/Desmarcar Filtrados)
+        sel_ctrl_frame = ctk.CTkFrame(popup, fg_color="transparent")
+        sel_ctrl_frame.grid(row=5, column=0, padx=20, pady=2, sticky="ew")
+        sel_ctrl_frame.grid_columnconfigure(0, weight=1)
+        sel_ctrl_frame.grid_columnconfigure(1, weight=1)
+
+        btn_check_all = ctk.CTkButton(sel_ctrl_frame, text="Marcar Filtrados", height=24, fg_color="#34495e", hover_color="#2c3e50", font=ctk.CTkFont(size=11), command=lambda: select_filtered(True))
+        btn_check_all.grid(row=0, column=0, padx=(0, 5), sticky="ew")
+
+        btn_uncheck_all = ctk.CTkButton(sel_ctrl_frame, text="Desmarcar Filtrados", height=24, fg_color="#34495e", hover_color="#2c3e50", font=ctk.CTkFont(size=11), command=lambda: select_filtered(False))
+        btn_uncheck_all.grid(row=0, column=1, padx=(5, 0), sticky="ew")
 
         # Footer Frame
         footer = ctk.CTkFrame(popup, fg_color="transparent")
-        footer.grid(row=3, column=0, padx=20, pady=(5, 15), sticky="ew")
+        footer.grid(row=6, column=0, padx=20, pady=(10, 15), sticky="ew")
         footer.grid_columnconfigure(0, weight=1)
         footer.grid_columnconfigure(1, weight=1)
 
+        # Delete Action
         def on_delete_clicked():
-            to_delete = [path for path, var in checkboxes.items() if var.get()]
+            to_delete = [path for path, var in checkbox_selections.items() if var.get()]
             if not to_delete:
                 messagebox.showwarning("Aviso", "Nenhum arquivo selecionado para exclusão.", parent=popup)
                 return
             
-            # Show confirm list
             confirm_msg = "Tem certeza de que deseja EXCLUIR DEFINITIVAMENTE os seguintes arquivos executáveis?\n\n"
             for p in to_delete:
                 confirm_msg += f"• {os.path.basename(p)}\n"
@@ -535,21 +685,22 @@ class AtualizadorApp(ctk.CTk):
                     except Exception as err:
                         errors.append(f"{os.path.basename(p)}: {str(err)}")
                 
-                # Show results
                 if errors:
                     err_msg = f"Foram excluídos {deleted_count} arquivos.\n\nErros ocorridos:\n" + "\n".join(errors)
                     messagebox.showerror("Exclusão Parcial", err_msg, parent=popup)
                 else:
                     messagebox.showinfo("Sucesso", f"Todos os {deleted_count} arquivos selecionados foram excluídos com sucesso!", parent=popup)
                 
-                # Refresh UI
-                refresh_file_list()
+                scan_directory()
 
         delete_btn = ctk.CTkButton(footer, text="Excluir Selecionados", font=ctk.CTkFont(size=13, weight="bold"), fg_color="#d9534f", hover_color="#c9302c", height=35, command=on_delete_clicked)
         delete_btn.grid(row=0, column=0, padx=(0, 5), sticky="ew")
 
         close_btn = ctk.CTkButton(footer, text="Fechar", height=35, fg_color="transparent", border_width=1, command=popup.destroy)
         close_btn.grid(row=0, column=1, padx=(5, 0), sticky="ew")
+
+        # Load files initial list
+        scan_directory()
 
     # ----------------- TAB 4: CONFIGURAÇÕES -----------------
     def setup_tab_settings(self):
@@ -1261,7 +1412,7 @@ class AtualizadorApp(ctk.CTk):
         details_text = (
             "Desenvolvedor: Robson Santos\n"
             "Contato: robsonshk@gmail.com\n"
-            "Versão do Programa: 1.2.6\n"
+            "Versão do Programa: 1.2.7\n"
             "Finalidade: Facilitar a automação e controle do processo de atualizações de sistemas NBS."
         )
         ctk.CTkLabel(info_frame, text=details_text, justify="left", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")
@@ -1273,6 +1424,9 @@ class AtualizadorApp(ctk.CTk):
         self.changelog_box.grid(row=3, column=0, padx=20, pady=(0, 20), sticky="nsew")
 
         changelog_text = (
+            "=== Versão 1.2.7  ===\n"
+            "- Ajustado o Utilitário de Limpeza da pasta NBS para suportar seleção dinâmica de pastas, buscas por Glob/Regex e controle de filtragem (limitado a arquivos .exe).\n"
+            "- Adicionada a nova ferramenta de Limpeza por Extensão na aba NBS para permitir a busca e exclusão segura de tipos de arquivos customizados (.log, .tmp, .zip, etc.).\n\n"
             "=== Versão 1.2.6  ===\n"
             "- Implementada criptografia simétrica (XOR + Base64) nas configurações locais, ocultando credenciais de banco e FTP contra visualização em plain-text.\n"
             "- Redirecionado o armazenamento das configurações para as pastas padrão do usuário (%APPDATA% no Windows e ~/.config no Linux) com o nome 'config.enc'.\n"
@@ -1364,7 +1518,7 @@ class AtualizadorApp(ctk.CTk):
         details_text = (
             "Desenvolvedor: Robson Santos\n"
             "Contato: robsonshk@gmail.com\n"
-            "Versão do Programa: 1.0.7\n"
+            "Versão do Programa: 1.0.8\n"
             "Finalidade: Facilitar o download, descompactação, aplicação de atualizações e limpeza de arquivos do sistema Linx DMS."
         )
         ctk.CTkLabel(info_frame, text=details_text, justify="left", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")
@@ -1376,6 +1530,8 @@ class AtualizadorApp(ctk.CTk):
         self.linx_changelog_box.grid(row=3, column=0, padx=20, pady=(0, 20), sticky="nsew")
 
         linx_changelog_text = (
+            "=== Versão 1.0.8 ===\n"
+            "- Adicionado o novo Utilitário de Limpeza por Extensão na aba Linx, permitindo a pesquisa e remoção de arquivos de qualquer extensão customizada (.log, .tmp, .zip, etc.).\n\n"
             "=== Versão 1.0.7 ===\n"
             "- Adicionada opção para download do Linx DMS Integrador (arquivo LinxDMSIntegrador.zip) e monitoramento do serviço dmLDIServer.\n"
             "- Ajustadas pastas padrão do utilitário de exclusão Linx para C:\\Apollo e C:\\3camadas, e adicionado botão de busca para pasta customizada.\n"
@@ -3082,6 +3238,7 @@ class AtualizadorApp(ctk.CTk):
         tab = self.frame_linx_utilities
         tab.grid_columnconfigure(0, weight=1)
         tab.grid_rowconfigure(2, weight=1)
+        tab.grid_rowconfigure(3, weight=1)
 
         # Title
         ctk.CTkLabel(tab, text="Utilitários e Manutenção Linx", font=ctk.CTkFont(size=20, weight="bold")).grid(row=0, column=0, padx=20, pady=(20, 5), sticky="w")
@@ -3105,6 +3262,23 @@ class AtualizadorApp(ctk.CTk):
 
         self.linx_cleanup_btn = ctk.CTkButton(cleanup_frame, text="Limpar Executáveis/DLLs Linx", font=ctk.CTkFont(size=13, weight="bold"), height=35, command=self.open_linx_cleanup_popup)
         self.linx_cleanup_btn.grid(row=2, column=0, padx=15, pady=(0, 20), sticky="w")
+
+        # Extension cleanup card
+        ext_frame = ctk.CTkFrame(tab)
+        ext_frame.grid(row=3, column=0, padx=20, pady=10, sticky="nsew")
+        ext_frame.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(ext_frame, text="Limpeza de Arquivos por Extensão (Linx)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
+        
+        ext_details = (
+            "Esta ferramenta permite pesquisar e excluir arquivos de qualquer extensão específica (ex: .log, .tmp, .zip)\n"
+            "dentro dos diretórios do Linx ou outro diretório que você escolher.\n"
+            "Você define a extensão a ser buscada, filtra os resultados e seleciona manualmente quais remover."
+        )
+        ctk.CTkLabel(ext_frame, text=ext_details, justify="left", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")
+
+        self.linx_ext_cleanup_btn = ctk.CTkButton(ext_frame, text="Limpar por Extensão Linx", font=ctk.CTkFont(size=13, weight="bold"), height=35, command=lambda: self.open_extension_cleanup_popup("linx"))
+        self.linx_ext_cleanup_btn.grid(row=2, column=0, padx=15, pady=(0, 20), sticky="w")
 
     def open_linx_cleanup_popup(self):
         """Abre uma janela pop-up modal para listar, pesquisar por glob/regex, e excluir arquivos exe/dll do Linx."""
@@ -3360,6 +3534,285 @@ class AtualizadorApp(ctk.CTk):
         close_btn.grid(row=0, column=1, padx=(5, 0), sticky="ew")
 
         # Initial Scan
+        scan_directory()
+
+    def open_extension_cleanup_popup(self, system_name):
+        """Abre uma janela pop-up modal para pesquisar e excluir arquivos por extensão específica (ex: .log, .tmp)."""
+        c = self.app_config
+
+        # Create window
+        popup = ctk.CTkToplevel(self)
+        title_suffix = "NBS" if system_name == "nbs" else "Linx"
+        popup.title(f"Limpeza por Extensão - {title_suffix}")
+        popup.geometry("620x680")
+        popup.minsize(550, 520)
+        popup.grab_set()  # Make modal
+
+        # Title labels
+        ctk.CTkLabel(popup, text=f"Utilitário de Limpeza por Extensão - {title_suffix}", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, padx=20, pady=(15, 5), sticky="w")
+
+        # Top Control Frame (Directory selection + Path details)
+        top_ctrl = ctk.CTkFrame(popup)
+        top_ctrl.grid(row=1, column=0, padx=20, pady=5, sticky="ew")
+        top_ctrl.grid_columnconfigure(0, weight=1)
+        top_ctrl.grid_columnconfigure(1, weight=3)
+        top_ctrl.grid_columnconfigure(2, weight=1)
+        popup.grid_columnconfigure(0, weight=1)
+
+        folder_label_text = "Pasta NBS a Limpar:" if system_name == "nbs" else "Pasta Linx a Limpar:"
+        ctk.CTkLabel(top_ctrl, text=folder_label_text, font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=10, pady=5, sticky="w")
+
+        custom_path_var = ctk.StringVar(value="")
+
+        # Directory resolution helper
+        def get_resolved_path(dir_key):
+            if system_name == "nbs":
+                if dir_key == "C:\\NBS":
+                    return c.get("nbs_path_win", "C:\\NBS") if self.os_type == "Windows" else c.get("nbs_path_linux", "./NBS_Local")
+            else: # linx
+                if dir_key == "C:\\Apollo":
+                    return "C:\\Apollo" if self.os_type == "Windows" else "./Apollo"
+                elif dir_key == "C:\\3camadas":
+                    return "C:\\3camadas" if self.os_type == "Windows" else "./3Camadas"
+            
+            if dir_key == "Outro Diretório...":
+                return custom_path_var.get()
+            return ""
+
+        # OptionMenu selection
+        default_val = "C:\\NBS" if system_name == "nbs" else "C:\\Apollo"
+        menu_values = ["C:\\NBS", "Outro Diretório..."] if system_name == "nbs" else ["C:\\Apollo", "C:\\3camadas", "Outro Diretório..."]
+        
+        dir_var = ctk.StringVar(value=default_val)
+        dir_label_path = ctk.CTkLabel(popup, text="Caminho: -", font=ctk.CTkFont(size=11, slant="italic"), anchor="w")
+        dir_label_path.grid(row=2, column=0, padx=20, pady=(2, 8), sticky="w")
+
+        # Extension Input Frame (Row 3)
+        ext_input_frame = ctk.CTkFrame(popup)
+        ext_input_frame.grid(row=3, column=0, padx=20, pady=5, sticky="ew")
+        ext_input_frame.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(ext_input_frame, text="Extensão de arquivo (ex: .log, .tmp, .zip):", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=10, pady=8, sticky="w")
+        ext_entry = ctk.CTkEntry(ext_input_frame, placeholder_text=".log")
+        ext_entry.grid(row=0, column=1, padx=10, pady=8, sticky="ew")
+        ext_entry.insert(0, ".log")
+
+        # Search/Filter Frame (Row 4)
+        filter_frame = ctk.CTkFrame(popup)
+        filter_frame.grid(row=4, column=0, padx=20, pady=5, sticky="ew")
+        filter_frame.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(filter_frame, text="Pesquisa / Filtro (Glob/Regex):", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=10, pady=(5, 0), sticky="w")
+        
+        filter_entry_frame = ctk.CTkFrame(filter_frame, fg_color="transparent")
+        filter_entry_frame.grid(row=1, column=0, padx=10, pady=5, sticky="ew")
+        filter_entry_frame.grid_columnconfigure(0, weight=1)
+
+        filter_entry = ctk.CTkEntry(filter_entry_frame, placeholder_text="Ex: *log* ou ^NBSErr.*\\.log$")
+        filter_entry.grid(row=0, column=0, sticky="ew")
+
+        # Selection tracking dictionaries
+        all_files_found = []
+        file_checkboxes_widgets = []
+        checkbox_selections = {} # Stores {filepath: BooleanVar}
+
+        # Scroll frame for items list (Row 5)
+        scroll_frame = ctk.CTkScrollableFrame(popup, label_text="Arquivos Encontrados")
+        scroll_frame.grid(row=5, column=0, padx=20, pady=10, sticky="nsew")
+        popup.grid_rowconfigure(5, weight=1)
+
+        # Glob / Regex matching logic
+        import fnmatch
+        import re
+
+        def matches_pattern(filename, pattern):
+            if not pattern:
+                return True
+            pattern = pattern.strip()
+            if "*" in pattern or "?" in pattern:
+                try:
+                    return fnmatch.fnmatchcase(filename.lower(), pattern.lower())
+                except Exception:
+                    pass
+            try:
+                regex = re.compile(pattern, re.IGNORECASE)
+                return bool(regex.search(filename))
+            except Exception:
+                pass
+            return pattern.lower() in filename.lower()
+
+        # Render list based on filter
+        def populate_list():
+            for w in file_checkboxes_widgets:
+                try:
+                    w.destroy()
+                except Exception:
+                    pass
+            file_checkboxes_widgets.clear()
+
+            target_path = get_resolved_path(dir_var.get())
+            dir_label_path.configure(text=f"Diretório ativo: {os.path.abspath(target_path)}")
+
+            if not os.path.exists(target_path):
+                err_lbl = ctk.CTkLabel(scroll_frame, text="Caminho do diretório não encontrado no sistema.", font=ctk.CTkFont(slant="italic"))
+                err_lbl.grid(row=0, column=0, padx=10, pady=10, sticky="w")
+                file_checkboxes_widgets.append(err_lbl)
+                return
+
+            filter_text = filter_entry.get().strip()
+
+            filtered_files = []
+            for f in all_files_found:
+                if matches_pattern(f, filter_text):
+                    filtered_files.append(f)
+
+            if not filtered_files:
+                ext_str = ext_entry.get().strip()
+                empty_lbl = ctk.CTkLabel(scroll_frame, text=f"Nenhum arquivo {ext_str} corresponde à pesquisa.", font=ctk.CTkFont(slant="italic"))
+                empty_lbl.grid(row=0, column=0, padx=10, pady=10, sticky="w")
+                file_checkboxes_widgets.append(empty_lbl)
+                return
+
+            for idx, filename in enumerate(filtered_files):
+                full_path = os.path.join(target_path, filename)
+                
+                if full_path not in checkbox_selections:
+                    checkbox_selections[full_path] = ctk.BooleanVar(value=False)
+                
+                try:
+                    stats = os.stat(full_path)
+                    size_mb = stats.st_size / (1024 * 1024)
+                    mtime = datetime.fromtimestamp(stats.st_mtime).strftime("%d/%m/%Y %H:%M")
+                    details = f" ({size_mb:.2f} MB) - {mtime}"
+                except Exception:
+                    details = ""
+
+                chk = ctk.CTkCheckBox(scroll_frame, text=f"{filename}{details}", variable=checkbox_selections[full_path])
+                chk.grid(row=idx, column=0, padx=10, pady=4, sticky="w")
+                file_checkboxes_widgets.append(chk)
+
+        # Scans directory and resets files tracking
+        def browse_custom_dir():
+            from tkinter import filedialog
+            selected = filedialog.askdirectory(parent=popup, title="Selecionar pasta para limpeza")
+            if selected:
+                custom_path_var.set(selected)
+                dir_var.set("Outro Diretório...")
+                scan_directory()
+
+        def scan_directory():
+            all_files_found.clear()
+            checkbox_selections.clear()
+            
+            target_path = get_resolved_path(dir_var.get())
+            if dir_var.get() == "Outro Diretório..." and not target_path:
+                browse_custom_dir()
+                return
+
+            ext_str = ext_entry.get().strip().lower()
+            if not ext_str.startswith("."):
+                ext_str = "." + ext_str
+
+            if os.path.exists(target_path):
+                try:
+                    for name in os.listdir(target_path):
+                        if os.path.isfile(os.path.join(target_path, name)):
+                            name_lower = name.lower()
+                            if name_lower.endswith(ext_str):
+                                all_files_found.append(name)
+                    all_files_found.sort()
+                except Exception as err:
+                    print(f"Erro ao escanear diretório: {str(err)}")
+            populate_list()
+
+        # Selection helpers for filtered items
+        def select_filtered(state):
+            filter_text = filter_entry.get().strip()
+            target_path = get_resolved_path(dir_var.get())
+            
+            for filename in all_files_found:
+                if matches_pattern(filename, filter_text):
+                    full_path = os.path.join(target_path, filename)
+                    if full_path in checkbox_selections:
+                        checkbox_selections[full_path].set(state)
+
+        # Bind events
+        ext_entry.bind("<Return>", lambda e: scan_directory())
+        ext_entry.bind("<FocusOut>", lambda e: scan_directory())
+
+        # UI Actions
+        dir_menu = ctk.CTkOptionMenu(top_ctrl, variable=dir_var, values=menu_values, command=lambda v: scan_directory())
+        dir_menu.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
+
+        btn_browse = ctk.CTkButton(top_ctrl, text="Pesquisar...", width=95, command=browse_custom_dir)
+        btn_browse.grid(row=0, column=2, padx=(0, 10), pady=5)
+
+        # Search/Filter action buttons
+        btn_apply = ctk.CTkButton(filter_entry_frame, text="Filtrar", width=80, command=populate_list)
+        btn_apply.grid(row=0, column=1, padx=(5, 0))
+
+        btn_clear = ctk.CTkButton(filter_entry_frame, text="Limpar", width=80, fg_color="transparent", border_width=1, command=lambda: [filter_entry.delete(0, "end"), populate_list()])
+        btn_clear.grid(row=0, column=2, padx=(5, 0))
+
+        # Search button next to extension entry
+        btn_search_ext = ctk.CTkButton(ext_input_frame, text="Buscar arquivos", width=120, command=scan_directory)
+        btn_search_ext.grid(row=0, column=2, padx=10, pady=8)
+
+        # Selection Control Row (Row 6)
+        sel_ctrl_frame = ctk.CTkFrame(popup, fg_color="transparent")
+        sel_ctrl_frame.grid(row=6, column=0, padx=20, pady=2, sticky="ew")
+        sel_ctrl_frame.grid_columnconfigure(0, weight=1)
+        sel_ctrl_frame.grid_columnconfigure(1, weight=1)
+
+        btn_check_all = ctk.CTkButton(sel_ctrl_frame, text="Marcar Filtrados", height=24, fg_color="#34495e", hover_color="#2c3e50", font=ctk.CTkFont(size=11), command=lambda: select_filtered(True))
+        btn_check_all.grid(row=0, column=0, padx=(0, 5), sticky="ew")
+
+        btn_uncheck_all = ctk.CTkButton(sel_ctrl_frame, text="Desmarcar Filtrados", height=24, fg_color="#34495e", hover_color="#2c3e50", font=ctk.CTkFont(size=11), command=lambda: select_filtered(False))
+        btn_uncheck_all.grid(row=0, column=1, padx=(5, 0), sticky="ew")
+
+        # Footer Frame (Row 7)
+        footer = ctk.CTkFrame(popup, fg_color="transparent")
+        footer.grid(row=7, column=0, padx=20, pady=(10, 15), sticky="ew")
+        footer.grid_columnconfigure(0, weight=1)
+        footer.grid_columnconfigure(1, weight=1)
+
+        # Delete Action
+        def on_delete_clicked():
+            to_delete = [path for path, var in checkbox_selections.items() if var.get()]
+            if not to_delete:
+                messagebox.showwarning("Aviso", "Nenhum arquivo selecionado para exclusão.", parent=popup)
+                return
+            
+            confirm_msg = "Tem certeza de que deseja EXCLUIR DEFINITIVAMENTE os seguintes arquivos?\n\n"
+            for p in to_delete:
+                confirm_msg += f"• {os.path.basename(p)}\n"
+            
+            confirm = messagebox.askyesno("Confirmar Exclusão", confirm_msg, parent=popup)
+            if confirm:
+                deleted_count = 0
+                errors = []
+                for p in to_delete:
+                    try:
+                        os.remove(p)
+                        deleted_count += 1
+                    except Exception as err:
+                        errors.append(f"{os.path.basename(p)}: {str(err)}")
+                
+                if errors:
+                    err_msg = f"Foram excluídos {deleted_count} arquivos.\n\nErros ocorridos:\n" + "\n".join(errors)
+                    messagebox.showerror("Exclusão Parcial", err_msg, parent=popup)
+                else:
+                    messagebox.showinfo("Sucesso", f"Todos os {deleted_count} arquivos selecionados foram excluídos com sucesso!", parent=popup)
+                
+                scan_directory()
+
+        delete_btn = ctk.CTkButton(footer, text="Excluir Selecionados", font=ctk.CTkFont(size=13, weight="bold"), fg_color="#d9534f", hover_color="#c9302c", height=38, command=on_delete_clicked)
+        delete_btn.grid(row=0, column=0, padx=(0, 5), sticky="ew")
+
+        close_btn = ctk.CTkButton(footer, text="Fechar", height=38, fg_color="transparent", border_width=1, command=popup.destroy)
+        close_btn.grid(row=0, column=1, padx=(5, 0), sticky="ew")
+
+        # Load files initial list
         scan_directory()
 
 if __name__ == "__main__":

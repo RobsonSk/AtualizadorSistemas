@@ -37,6 +37,8 @@ O sistema possui comportamento **Cross-Platform**: funciona plenamente no Window
 *   **Execução de Scripts SQL**: Identifica e executa scripts de banco de dados (`.sql` ou `.exe` compilados) com elevação de privilégios (UAC).
 *   **Distribuição de Rede**: Distribui de forma concorrente os arquivos atualizados para múltiplos servidores da rede local cadastrados na lista.
 *   **Backup Automático**: Compacta a pasta de backup antiga no formato `.zip` com opção de excluir o diretório descompactado de origem para economizar espaço em disco.
+*   **Aba Utilitários NBS (Limpeza de Executáveis)**: Permite listar, pesquisar por Glob/Regex e excluir arquivos executáveis (`.exe`) na pasta local do NBS, seguindo a mesma interface avançada de pesquisa e seleção interativa.
+*   **Limpeza por Extensão (NBS)**: Permite pesquisar e remover arquivos de qualquer extensão informada pelo usuário (ex: `.log`, `.tmp`, `.zip`) dentro da pasta NBS ou outro diretório customizado de forma interativa.
 
 ### 3. Sistema Linx DMS (HTTP & Serviços)
 *   **Downloads Modulares**: Baixa pacotes evolutivos Delphi (Padrão), 3 Camadas Server, 3 Camadas Client, Instalador Web, DMS Comissões, Apoio (Troca Fornecedor, Troca Série, Verifica Diária) e o **Linx DMS Integrador**.
@@ -53,6 +55,7 @@ O sistema possui comportamento **Cross-Platform**: funciona plenamente no Window
     *   Focado por padrão nas pastas **`C:\Apollo`** e **`C:\3camadas`**.
     *   **Botão de Pesquisa Customizada**: Permite selecionar interativamente qualquer outra pasta do disco para realizar o escaneamento.
     *   **Pesquisa Avançada (Glob e Regex)**: Filtra os arquivos usando curingas comuns (Ex: `*2026*.dll`) ou expressões regulares avançadas (Ex: `^DMS_.*\.exe$`).
+*   **Limpeza por Extensão (Linx)**: Permite pesquisar e remover arquivos de qualquer extensão informada pelo usuário (ex: `.log`, `.tmp`, `.zip`) dentro das pastas do Linx ou outro diretório customizado de forma interativa.
 
 ### 4. Configurações Dinâmicas e Tema Sincronizado
 *   **Templates de URL**: Permite configurar e salvar todas as URLs HTTP utilizadas no download do Linx através de curingas dinâmicos de `{version}` e `{package}`.
