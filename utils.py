@@ -78,21 +78,21 @@ def backup_local_executables(nbs_path, backup_path, log_callback=None):
             log_callback(f"Erro durante backup dos executáveis: {str(e)}")
         return False
 
-def execute_script_as_admin(script_path, log_callback=None):
+def execute_script_as_admin(script_path, log_callback=None, parameters=""):
     """
     Runs the selected script elevated as Administrator and blocks/waits for completion.
     On Linux, simulates this by waiting and logging.
     """
     if log_callback:
-        log_callback(f"Preparando para executar script: {script_path}")
+        log_callback(f"Preparando para executar script: {script_path} {parameters}".strip())
         
     if platform.system() != "Windows":
         if log_callback:
             log_callback("[Linux SIMULADO] Solicitando permissão de Administrador (sudo/runas)...")
-            log_callback("[Linux SIMULADO] Executando script de banco de dados...")
+            log_callback(f"[Linux SIMULADO] Executando: {script_path} {parameters}".strip())
         time.sleep(2)
         if log_callback:
-            log_callback("[Linux SIMULADO] Script finalizado com sucesso.")
+            log_callback("[Linux SIMULADO] Execução simulada finalizada com sucesso.")
         return True
         
     if not os.path.exists(script_path):
@@ -128,7 +128,7 @@ def execute_script_as_admin(script_path, log_callback=None):
     info.hwnd = None
     info.lpVerb = "runas"  # Prompts UAC elevation dialog
     info.lpFile = script_path
-    info.lpParameters = ""
+    info.lpParameters = parameters if parameters else None
     info.lpDirectory = os.path.dirname(script_path)
     info.nShow = 1  # SW_SHOWNORMAL
     
@@ -369,6 +369,7 @@ def download_http_file(url, local_filepath, progress_callback=None, check_pause_
     Supports pause/cancel validation and progress reporting via callbacks.
     """
     import urllib.request
+    import ssl
 
     try:
         # Create request with a User-Agent to avoid HTTP 403 Forbidden issues
@@ -377,7 +378,19 @@ def download_http_file(url, local_filepath, progress_callback=None, check_pause_
         if check_pause_cancel:
             check_pause_cancel()
 
-        with urllib.request.urlopen(req, timeout=15) as response:
+        # Try to download using standard SSL verification first.
+        # If it fails with SSL verification errors, fallback to unverified context.
+        try:
+            response = urllib.request.urlopen(req, timeout=15)
+        except Exception as ssl_err:
+            ssl_err_str = str(ssl_err).lower()
+            if "certificate_verify_failed" in ssl_err_str or "certificate verify failed" in ssl_err_str:
+                context = ssl._create_unverified_context()
+                response = urllib.request.urlopen(req, timeout=15, context=context)
+            else:
+                raise ssl_err
+
+        with response:
             total_size = int(response.info().get("Content-Length", 0))
             
             # Ensure output folder exists

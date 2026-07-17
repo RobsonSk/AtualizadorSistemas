@@ -74,7 +74,7 @@ class AtualizadorApp(ctk.CTk):
 
         # ----------------- SIDEBAR -----------------
         self.sidebar_frame = ctk.CTkFrame(self, width=220, corner_radius=0)
-        self.sidebar_frame.grid_rowconfigure(8, weight=1)  # Spacer row (pushed down)
+        self.sidebar_frame.grid_rowconfigure(9, weight=1)  # Spacer row (pushed down)
 
         self.logo_label = ctk.CTkLabel(self.sidebar_frame, text="NBS Atualizador", font=ctk.CTkFont(size=20, weight="bold"))
         self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 5))
@@ -87,6 +87,7 @@ class AtualizadorApp(ctk.CTk):
         self.nav_btn2 = ctk.CTkButton(self.sidebar_frame, text="Executar Scripts", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("execution"))
         self.nav_btn3 = ctk.CTkButton(self.sidebar_frame, text="Cópia para outros servidores", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("distribution"))
         self.nav_btn6 = ctk.CTkButton(self.sidebar_frame, text="Utilitários", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("utilities"))
+        self.nav_btn7 = ctk.CTkButton(self.sidebar_frame, text="Atualização CRMWeb", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("crmweb"))
         self.nav_btn4 = ctk.CTkButton(self.sidebar_frame, text="Configurações", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("settings"))
         self.nav_btn5 = ctk.CTkButton(self.sidebar_frame, text="Sobre o App", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("about"))
 
@@ -110,6 +111,7 @@ class AtualizadorApp(ctk.CTk):
         self.frame_execution = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.frame_distribution = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.frame_utilities = ctk.CTkFrame(self.content_frame, fg_color="transparent")
+        self.frame_crmweb = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.frame_settings = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.frame_about = ctk.CTkFrame(self.content_frame, fg_color="transparent")
 
@@ -124,6 +126,7 @@ class AtualizadorApp(ctk.CTk):
         self.setup_tab_execution()
         self.setup_tab_distribution()
         self.setup_tab_utilities()
+        self.setup_tab_crmweb()
         self.setup_tab_settings()
         self.setup_tab_about()
 
@@ -456,6 +459,226 @@ class AtualizadorApp(ctk.CTk):
 
         self.ext_cleanup_btn = ctk.CTkButton(ext_frame, text="Limpar por Extensão NBS", font=ctk.CTkFont(size=13, weight="bold"), height=35, command=lambda: self.open_extension_cleanup_popup("nbs"))
         self.ext_cleanup_btn.grid(row=2, column=0, padx=15, pady=(0, 20), sticky="w")
+
+    def setup_tab_crmweb(self):
+        tab = self.frame_crmweb
+        tab.grid_columnconfigure(0, weight=1)
+        tab.grid_rowconfigure(2, weight=1)
+
+        # Title
+        ctk.CTkLabel(tab, text="Atualização CRMWeb", font=ctk.CTkFont(size=20, weight="bold")).grid(row=0, column=0, padx=20, pady=(20, 5), sticky="w")
+        ctk.CTkLabel(tab, text="Executar utilitários de atualização do CRMWeb com privilégios de Administrador.", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=20, pady=(0, 15), sticky="w")
+
+        # Container cards
+        cards_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        cards_frame.grid(row=2, column=0, padx=20, pady=10, sticky="nsew")
+        cards_frame.grid_columnconfigure(0, weight=1)
+        cards_frame.grid_columnconfigure(1, weight=1)
+        cards_frame.grid_columnconfigure(2, weight=1)
+        cards_frame.grid_rowconfigure(0, weight=1)
+
+        # Card 1: WEUpdate
+        self.crm_card1 = ctk.CTkFrame(cards_frame)
+        self.crm_card1.grid(row=0, column=0, padx=(0, 5), pady=0, sticky="nsew")
+        self.crm_card1.grid_columnconfigure(0, weight=1)
+        
+        ctk.CTkLabel(self.crm_card1, text="WEUpdate (CRMGold)", font=ctk.CTkFont(size=15, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 10), sticky="w")
+        
+        ctk.CTkLabel(self.crm_card1, text="Caminho do Executável:", font=ctk.CTkFont(size=11)).grid(row=1, column=0, padx=15, pady=(5, 0), sticky="w")
+        self.crm_path1_entry = ctk.CTkEntry(self.crm_card1)
+        self.crm_path1_entry.grid(row=2, column=0, padx=15, pady=2, sticky="ew")
+        self.crm_path1_entry.insert(0, r"C:\java\Update_BSC_CRMGold\WEUpdate.exe")
+        
+        ctk.CTkLabel(self.crm_card1, text="Parâmetros de Linha de Comando:", font=ctk.CTkFont(size=11)).grid(row=3, column=0, padx=15, pady=(5, 0), sticky="w")
+        self.crm_params1_entry = ctk.CTkEntry(self.crm_card1)
+        self.crm_params1_entry.grid(row=4, column=0, padx=15, pady=2, sticky="ew")
+        self.crm_params1_entry.insert(0, "-suporte")
+
+        self.crm_btn1 = ctk.CTkButton(self.crm_card1, text="Executar WEUpdate", font=ctk.CTkFont(weight="bold"), height=35, command=self.run_weupdate)
+        self.crm_btn1.grid(row=5, column=0, padx=15, pady=20, sticky="ew")
+
+        # Card 2: JManagerClient
+        self.crm_card2 = ctk.CTkFrame(cards_frame)
+        self.crm_card2.grid(row=0, column=1, padx=5, pady=0, sticky="nsew")
+        self.crm_card2.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(self.crm_card2, text="JManagerClient (Client)", font=ctk.CTkFont(size=15, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 10), sticky="w")
+
+        ctk.CTkLabel(self.crm_card2, text="Caminho do Executável:", font=ctk.CTkFont(size=11)).grid(row=1, column=0, padx=15, pady=(5, 0), sticky="w")
+        self.crm_path2_entry = ctk.CTkEntry(self.crm_card2)
+        self.crm_path2_entry.grid(row=2, column=0, padx=15, pady=2, sticky="ew")
+        self.crm_path2_entry.insert(0, r"C:\java\JManagerClient\JManagerClient.exe")
+
+        ctk.CTkLabel(self.crm_card2, text="Parâmetros de Linha de Comando:", font=ctk.CTkFont(size=11)).grid(row=3, column=0, padx=15, pady=(5, 0), sticky="w")
+        self.crm_params2_entry = ctk.CTkEntry(self.crm_card2)
+        self.crm_params2_entry.grid(row=4, column=0, padx=15, pady=2, sticky="ew")
+        self.crm_params2_entry.insert(0, "-suporte -disablehash")
+
+        self.crm_btn2 = ctk.CTkButton(self.crm_card2, text="Executar JManagerClient", font=ctk.CTkFont(weight="bold"), height=35, command=self.run_jmanager)
+        self.crm_btn2.grid(row=5, column=0, padx=15, pady=20, sticky="ew")
+
+        # Card 3: Payara Service Monitor
+        self.crm_card3 = ctk.CTkFrame(cards_frame)
+        self.crm_card3.grid(row=0, column=2, padx=(5, 0), pady=0, sticky="nsew")
+        self.crm_card3.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(self.crm_card3, text="Serviço Payara (CRMWeb)", font=ctk.CTkFont(size=15, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 10), sticky="w")
+
+        ctk.CTkLabel(self.crm_card3, text="Nome do Serviço do Windows:", font=ctk.CTkFont(size=11)).grid(row=1, column=0, padx=15, pady=(5, 0), sticky="w")
+        self.crm_service_name_entry = ctk.CTkEntry(self.crm_card3)
+        self.crm_service_name_entry.grid(row=2, column=0, padx=15, pady=2, sticky="ew")
+        self.crm_service_name_entry.insert(0, "domain1")
+        self.crm_service_name_entry.bind("<FocusOut>", lambda e: self.save_ui_to_config())
+        self.crm_service_name_entry.bind("<Return>", lambda e: self.save_ui_to_config())
+
+        # Status Display Frame
+        status_sub_frame = ctk.CTkFrame(self.crm_card3, fg_color="transparent")
+        status_sub_frame.grid(row=3, column=0, padx=15, pady=10, sticky="ew")
+        status_sub_frame.grid_columnconfigure(0, weight=1)
+        status_sub_frame.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(status_sub_frame, text="Status atual:", font=ctk.CTkFont(size=11)).grid(row=0, column=0, sticky="w")
+        self.crm_service_status_lbl = ctk.CTkLabel(status_sub_frame, text="CONSULTANDO...", font=ctk.CTkFont(size=10, weight="bold"), fg_color="#7f8c8d", text_color="white", corner_radius=6, height=24)
+        self.crm_service_status_lbl.grid(row=1, column=0, sticky="ew", padx=(0, 5), pady=2)
+
+        self.crm_service_action_btn = ctk.CTkButton(status_sub_frame, text="...", width=70, font=ctk.CTkFont(size=11, weight="bold"), height=24)
+        self.crm_service_action_btn.grid(row=1, column=1, sticky="ew", padx=(5, 0), pady=2)
+
+        self.crm_service_refresh_btn = ctk.CTkButton(self.crm_card3, text="Atualizar Status", font=ctk.CTkFont(weight="bold"), command=self.refresh_crm_service)
+        self.crm_service_refresh_btn.grid(row=4, column=0, padx=15, pady=(10, 20), sticky="ew")
+
+        # Status & Log Console Frame (Bottom)
+        self.crm_bottom_frame = ctk.CTkFrame(tab)
+        self.crm_bottom_frame.grid(row=3, column=0, padx=20, pady=(10, 20), sticky="ew")
+        self.crm_bottom_frame.grid_columnconfigure(0, weight=1)
+
+        self.crm_status_label = ctk.CTkLabel(self.crm_bottom_frame, text="Status: Pronto.", font=ctk.CTkFont(size=12, weight="bold"), anchor="w")
+        self.crm_status_label.grid(row=0, column=0, padx=15, pady=5, sticky="w")
+
+        self.crm_log_box = ctk.CTkTextbox(self.crm_bottom_frame, height=140, font=ctk.CTkFont(family="monospace", size=11))
+        self.crm_log_box.grid(row=1, column=0, padx=15, pady=(5, 15), sticky="ew")
+
+    def run_weupdate(self):
+        self._execute_crm_app(self.crm_path1_entry, self.crm_params1_entry, self.crm_btn1, "WEUpdate")
+
+    def run_jmanager(self):
+        self._execute_crm_app(self.crm_path2_entry, self.crm_params2_entry, self.crm_btn2, "JManagerClient")
+
+    def _execute_crm_app(self, path_entry, params_entry, btn_widget, app_name):
+        path = path_entry.get().strip()
+        params = params_entry.get().strip()
+        if not path:
+            messagebox.showerror("Erro", f"Selecione ou digite o caminho de {app_name}.")
+            return
+            
+        btn_widget.configure(state="disabled")
+        self.crm_status_label.configure(text=f"Status: Executando {app_name}...")
+        self.crm_log_box.delete("1.0", "end")
+        
+        threading.Thread(target=self._crm_execution_thread, args=(path, params, btn_widget, app_name), daemon=True).start()
+
+    def _crm_execution_thread(self, path, params, btn_widget, app_name):
+        def log(msg):
+            self.after(0, lambda: [self.crm_log_box.insert("end", f"{msg}\n"), self.crm_log_box.see("end")])
+            
+        def status(text):
+            self.after(0, lambda: self.crm_status_label.configure(text=f"Status: {text}"))
+
+        if self.os_type != "Windows":
+            status(f"Executando {app_name} (Simulação)...")
+            log(f"[Linux SIMULADO] Preparando para executar: {path} {params}".strip())
+            log("[Linux SIMULADO] Solicitando permissão de Administrador (sudo/runas)...")
+            log(f"[Linux SIMULADO] Executando: {path} {params}".strip())
+            time.sleep(2)
+            log(f"[Linux SIMULADO] Execução simulada finalizada com sucesso.")
+            status("Concluído.")
+            self.after(0, lambda: messagebox.showinfo("Sucesso", f"{app_name} (Simulado) finalizado com sucesso!"))
+            self.after(0, lambda: btn_widget.configure(state="normal"))
+            return
+
+        status(f"Iniciando {app_name}...")
+        log(f"Iniciando executável elevado: {path} {params}".strip())
+        
+        # Check if file exists first
+        if not os.path.exists(path):
+            status("Erro: Não encontrado.")
+            log(f"Erro: O executável não existe no caminho especificado: {path}")
+            self.after(0, lambda: messagebox.showerror("Erro", f"Executável não encontrado em: {path}"))
+            self.after(0, lambda: btn_widget.configure(state="normal"))
+            return
+
+        success = utils.execute_script_as_admin(path, log, parameters=params)
+        if success:
+            status("Concluído.")
+            self.after(0, lambda: messagebox.showinfo("Sucesso", f"{app_name} executado e finalizado com sucesso!"))
+        else:
+            status("Erro ou Cancelado.")
+            self.after(0, lambda: messagebox.showerror("Falha", f"Ocorreu um erro ao executar {app_name} ou a elevação UAC foi negada."))
+            
+        self.after(0, lambda: btn_widget.configure(state="normal"))
+
+    def refresh_crm_service(self):
+        """Launches a background thread to check the status of the Payara service."""
+        s_name = self.app_config.get("crm_service_payara", "domain1")
+        self.crm_service_status_lbl.configure(text="CONSULTANDO...", fg_color="#7f8c8d")
+        self.crm_service_action_btn.configure(state="disabled", text="...")
+        self.crm_service_refresh_btn.configure(state="disabled", text="Consultando...")
+        
+        threading.Thread(target=self._refresh_crm_service_thread, args=(s_name,), daemon=True).start()
+
+    def _refresh_crm_service_thread(self, s_name):
+        status_val = self.query_service_status(s_name)
+        self.after(0, lambda: self.on_crm_service_refreshed(status_val))
+
+    def on_crm_service_refreshed(self, status_val):
+        self.crm_service_refresh_btn.configure(state="normal", text="Atualizar Status")
+        
+        if status_val == "ONLINE":
+            self.crm_service_status_lbl.configure(text="ONLINE", fg_color="#27ae60")
+            self.crm_service_action_btn.configure(
+                state="normal", text="Parar", fg_color="#c0392b", hover_color="#e74c3c",
+                command=lambda: self.trigger_crm_service_toggle("stop")
+            )
+        elif status_val == "OFFLINE":
+            self.crm_service_status_lbl.configure(text="OFFLINE", fg_color="#c0392b")
+            self.crm_service_action_btn.configure(
+                state="normal", text="Iniciar", fg_color="#27ae60", hover_color="#2ecc71",
+                command=lambda: self.trigger_crm_service_toggle("start")
+            )
+        elif status_val == "INDISPONIVEL":
+            self.crm_service_status_lbl.configure(text="APENAS WINDOWS", fg_color="#7f8c8d")
+            self.crm_service_action_btn.configure(state="disabled", text="Indisponível")
+        else:
+            self.crm_service_status_lbl.configure(text="INEXISTENTE", fg_color="#7f8c8d")
+            self.crm_service_action_btn.configure(state="disabled", text="-")
+
+    def trigger_crm_service_toggle(self, action):
+        s_name = self.app_config.get("crm_service_payara", "domain1")
+        self.crm_service_status_lbl.configure(text="PROCESSANDO...", fg_color="#e67e22")
+        self.crm_service_action_btn.configure(state="disabled", text="...")
+        
+        threading.Thread(target=self._toggle_crm_service_thread, args=(s_name, action), daemon=True).start()
+
+    def _toggle_crm_service_thread(self, s_name, action):
+        if platform.system() != "Windows":
+            import time
+            time.sleep(1.5)
+        else:
+            import subprocess
+            try:
+                subprocess.run(
+                    ["sc", action, s_name],
+                    capture_output=True,
+                    text=True,
+                    creationflags=0x08000000
+                )
+                import time
+                time.sleep(2.0)
+            except Exception:
+                pass
+        
+        status_val = self.query_service_status(s_name)
+        self.after(0, lambda: self.on_crm_service_refreshed(status_val))
 
     def open_nbs_cleanup_popup(self):
         """Abre uma janela pop-up modal para listar, pesquisar por glob/regex, e excluir arquivos exe do NBS."""
@@ -853,6 +1076,9 @@ class AtualizadorApp(ctk.CTk):
         set_entry_text(self.db_schema_entry, c.get("db_schema", ""))
         set_entry_text(self.db_name_entry, c.get("db_name", ""))
 
+        # CRM service config loading
+        set_entry_text(self.crm_service_name_entry, c.get("crm_service_payara", "domain1"))
+
         # Options
         self.transition_year_var.set(c.get("transition_year_enabled", False))
         set_entry_text(self.transition_year_entry, c.get("transition_year_value", "2025"))
@@ -975,6 +1201,9 @@ class AtualizadorApp(ctk.CTk):
         c["db_password"] = self.db_pass_entry.get()
         c["db_schema"] = self.db_schema_entry.get()
         c["db_name"] = self.db_name_entry.get()
+
+        # CRM service config saving
+        c["crm_service_payara"] = self.crm_service_name_entry.get()
 
         # Options
         c["transition_year_enabled"] = self.transition_year_var.get()
@@ -1212,9 +1441,10 @@ class AtualizadorApp(ctk.CTk):
         self.nav_btn1.configure(fg_color=("#3a7ebf", "#1f538d") if name == "download" else "transparent")
         self.nav_btn2.configure(fg_color=("#3a7ebf", "#1f538d") if name == "execution" else "transparent")
         self.nav_btn3.configure(fg_color=("#3a7ebf", "#1f538d") if name == "distribution" else "transparent")
+        self.nav_btn6.configure(fg_color=("#3a7ebf", "#1f538d") if name == "utilities" else "transparent")
+        self.nav_btn7.configure(fg_color=("#3a7ebf", "#1f538d") if name == "crmweb" else "transparent")
         self.nav_btn4.configure(fg_color=("#3a7ebf", "#1f538d") if name == "settings" else "transparent")
         self.nav_btn5.configure(fg_color=("#3a7ebf", "#1f538d") if name == "about" else "transparent")
-        self.nav_btn6.configure(fg_color=("#3a7ebf", "#1f538d") if name == "utilities" else "transparent")
 
         self.linx_nav_btn_download.configure(fg_color=("#3a7ebf", "#1f538d") if name == "linx_download" else "transparent")
         self.linx_nav_btn_update.configure(fg_color=("#3a7ebf", "#1f538d") if name == "linx_update" else "transparent")
@@ -1242,6 +1472,12 @@ class AtualizadorApp(ctk.CTk):
             self.frame_utilities.grid(row=0, column=0, sticky="nsew")
         else:
             self.frame_utilities.grid_remove()
+
+        if name == "crmweb":
+            self.frame_crmweb.grid(row=0, column=0, sticky="nsew")
+            self.after(100, self.refresh_crm_service)
+        else:
+            self.frame_crmweb.grid_remove()
 
         if name == "settings":
             self.frame_settings.grid(row=0, column=0, sticky="nsew")
@@ -1294,11 +1530,12 @@ class AtualizadorApp(ctk.CTk):
         self.nav_btn2.grid(row=3, column=0, padx=15, pady=5, sticky="ew")
         self.nav_btn3.grid(row=4, column=0, padx=15, pady=5, sticky="ew")
         self.nav_btn6.grid(row=5, column=0, padx=15, pady=5, sticky="ew")
-        self.nav_btn4.grid(row=6, column=0, padx=15, pady=5, sticky="ew")
-        self.nav_btn5.grid(row=7, column=0, padx=15, pady=5, sticky="ew")
+        self.nav_btn7.grid(row=6, column=0, padx=15, pady=5, sticky="ew")
+        self.nav_btn4.grid(row=7, column=0, padx=15, pady=5, sticky="ew")
+        self.nav_btn5.grid(row=8, column=0, padx=15, pady=5, sticky="ew")
         
         # Show back button
-        self.nav_btn_back_to_selection.grid(row=9, column=0, padx=15, pady=15, sticky="ew")
+        self.nav_btn_back_to_selection.grid(row=10, column=0, padx=15, pady=15, sticky="ew")
 
     def show_linx_sidebar(self):
         # Hide all NBS buttons
@@ -1306,6 +1543,7 @@ class AtualizadorApp(ctk.CTk):
         self.nav_btn2.grid_remove()
         self.nav_btn3.grid_remove()
         self.nav_btn6.grid_remove()
+        self.nav_btn7.grid_remove()
         self.nav_btn4.grid_remove()
         self.nav_btn5.grid_remove()
         
@@ -1317,7 +1555,7 @@ class AtualizadorApp(ctk.CTk):
         self.linx_nav_btn_about.grid(row=6, column=0, padx=15, pady=5, sticky="ew")
         
         # Show back button
-        self.nav_btn_back_to_selection.grid(row=9, column=0, padx=15, pady=15, sticky="ew")
+        self.nav_btn_back_to_selection.grid(row=10, column=0, padx=15, pady=15, sticky="ew")
 
     def setup_system_selection_ui(self):
         # Main container inside frame_system_selection
@@ -1345,7 +1583,7 @@ class AtualizadorApp(ctk.CTk):
         nbs_title = ctk.CTkLabel(self.nbs_card, text="Sistema NBS", font=ctk.CTkFont(size=18, weight="bold"))
         nbs_title.pack(pady=(20, 10))
         
-        nbs_desc = ctk.CTkLabel(self.nbs_card, text="• Atualização de Módulos (FTP)\n• Execução de Scripts SQL\n• Cópia de Redes (Distribuição)\n• Utilitários de Limpeza", justify="left", font=ctk.CTkFont(size=11))
+        nbs_desc = ctk.CTkLabel(self.nbs_card, text="• Atualização de Módulos (FTP)\n• Execução de Scripts SQL\n• Cópia de Redes (Distribuição)\n• Utilitários & Atualização CRMWeb", justify="left", font=ctk.CTkFont(size=11))
         nbs_desc.pack(anchor="w", padx=45, pady=10)
         
         nbs_btn = ctk.CTkButton(self.nbs_card, text="Atualizar NBS", font=ctk.CTkFont(weight="bold"), height=35, command=lambda: self.enter_system("nbs"))
@@ -1412,7 +1650,7 @@ class AtualizadorApp(ctk.CTk):
         details_text = (
             "Desenvolvedor: Robson Santos\n"
             "Contato: robsonshk@gmail.com\n"
-            "Versão do Programa: 1.2.7\n"
+            "Versão do Programa: 1.2.9\n"
             "Finalidade: Facilitar a automação e controle do processo de atualizações de sistemas NBS."
         )
         ctk.CTkLabel(info_frame, text=details_text, justify="left", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")
@@ -1424,6 +1662,12 @@ class AtualizadorApp(ctk.CTk):
         self.changelog_box.grid(row=3, column=0, padx=20, pady=(0, 20), sticky="nsew")
 
         changelog_text = (
+            "=== Versão 1.2.9 ===\n"
+            "- Adicionado painel de monitoramento e controle (iniciar/parar) do serviço do Payara (nome padrão 'domain1') na aba de Atualização CRMWeb, permitindo configurar nomes de serviço customizados.\n\n"
+            "=== Versão 1.2.8  ===\n"
+            "- Adicionado o novo menu 'Atualização CRMWeb' no painel do sistema NBS.\n"
+            "- Implementada a execução elevada como administrador (UAC) de utilitários CRMWeb (WEUpdate.exe e JManagerClient.exe) com passagem dinâmica de parâmetros de linha de comando.\n"
+            "- Criada interface de cards dedicada com log detalhado e mocks para simulação em ambiente Linux.\n\n"
             "=== Versão 1.2.7  ===\n"
             "- Ajustado o Utilitário de Limpeza da pasta NBS para suportar seleção dinâmica de pastas, buscas por Glob/Regex e controle de filtragem (limitado a arquivos .exe).\n"
             "- Adicionada a nova ferramenta de Limpeza por Extensão na aba NBS para permitir a busca e exclusão segura de tipos de arquivos customizados (.log, .tmp, .zip, etc.).\n\n"
@@ -1518,7 +1762,7 @@ class AtualizadorApp(ctk.CTk):
         details_text = (
             "Desenvolvedor: Robson Santos\n"
             "Contato: robsonshk@gmail.com\n"
-            "Versão do Programa: 1.0.8\n"
+            "Versão do Programa: 1.0.9\n"
             "Finalidade: Facilitar o download, descompactação, aplicação de atualizações e limpeza de arquivos do sistema Linx DMS."
         )
         ctk.CTkLabel(info_frame, text=details_text, justify="left", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")
@@ -1530,6 +1774,8 @@ class AtualizadorApp(ctk.CTk):
         self.linx_changelog_box.grid(row=3, column=0, padx=20, pady=(0, 20), sticky="nsew")
 
         linx_changelog_text = (
+            "=== Versão 1.0.9 ===\n"
+            "- Corrigido problema de detecção de status de serviços do Windows (DFeServico, etc.) em sistemas operacionais em outros idiomas (como Português-BR) adaptando a leitura para múltiplos padrões de resposta do comando 'sc query'.\n\n"
             "=== Versão 1.0.8 ===\n"
             "- Adicionado o novo Utilitário de Limpeza por Extensão na aba Linx, permitindo a pesquisa e remoção de arquivos de qualquer extensão customizada (.log, .tmp, .zip, etc.).\n\n"
             "=== Versão 1.0.7 ===\n"
@@ -2647,14 +2893,21 @@ class AtualizadorApp(ctk.CTk):
                 creationflags=0x08000000 # CREATE_NO_WINDOW
             )
             stdout = result.stdout or ""
-            if "STATE" in stdout:
-                if "RUNNING" in stdout or "4  RUNNING" in stdout:
+            stdout_upper = stdout.upper()
+            
+            # Suporta diferentes idiomas do Windows (Inglês: STATE, Português/Espanhol: ESTADO, Alemão: STATUS, etc.)
+            has_state_info = any(term in stdout_upper for term in ["STATE", "ESTADO", "STATUS", "STATO", "ETAT"])
+            
+            if has_state_info:
+                if "RUNNING" in stdout_upper or "4  RUNNING" in stdout_upper:
                     return "ONLINE"
-                elif "STOPPED" in stdout or "1  STOPPED" in stdout:
+                elif "STOPPED" in stdout_upper or "1  STOPPED" in stdout_upper:
                     return "OFFLINE"
-            # Fallback if service doesn't exist
-            if "1060" in stdout or "specified service does not exist" in stdout.lower():
+            
+            # Validação caso o serviço não exista (erro 1060 em inglês/português)
+            if "1060" in stdout_upper or "DOES NOT EXIST" in stdout_upper or "NAO EXISTE" in stdout_upper or "NÃO EXISTE" in stdout_upper:
                 return "INEXISTENTE"
+                
             return "OFFLINE"
         except Exception:
             return "DESCONHECIDO"

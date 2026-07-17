@@ -63,7 +63,8 @@ DEFAULT_CONFIG = {
     "linx_path_server_linux": "./3Camadas",
     "linx_path_client_linux": "./3Camadas_Atualiza",
     "linx_download_integrador": False,
-    "linx_url_integrador_template": "https://distribuicao.blob.core.windows.net/dms/DVI/LinxDMSIntegrador.zip"
+    "linx_url_integrador_template": "https://distribuicao.blob.core.windows.net/dms/DVI/LinxDMSIntegrador.zip",
+    "crm_service_payara": "domain1"
 }
 
 def encrypt_data(data_str: str) -> str:
@@ -141,7 +142,7 @@ def load_config():
         "linx_service_integrador",
         "linx_path_normal_win", "linx_path_server_win", "linx_path_client_win",
         "linx_path_normal_linux", "linx_path_server_linux", "linx_path_client_linux",
-        "linx_url_integrador_template"
+        "linx_url_integrador_template", "crm_service_payara"
     ]
     for k, v in DEFAULT_CONFIG.items():
         if k not in config or (k in fallback_keys and config[k] == ""):
