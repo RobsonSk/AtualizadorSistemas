@@ -78,6 +78,36 @@ def backup_local_executables(nbs_path, backup_path, log_callback=None):
             log_callback(f"Erro durante backup dos executáveis: {str(e)}")
         return False
 
+def backup_apollo_executables_and_dlls(apollo_path, backup_path, log_callback=None):
+    r"""
+    Copies all *.exe and *.dll files from apollo_path (C:\Apollo\atualiza) directly into backup_path (non-recursive).
+    """
+    if not os.path.exists(apollo_path):
+        if log_callback:
+            log_callback(f"Caminho do Apollo não encontrado: {apollo_path}. Ignorando backup.")
+        return False
+        
+    os.makedirs(backup_path, exist_ok=True)
+    
+    copied_count = 0
+    try:
+        for name in os.listdir(apollo_path):
+            full_path = os.path.join(apollo_path, name)
+            if os.path.isfile(full_path) and (name.lower().endswith(".exe") or name.lower().endswith(".dll")):
+                dest_file = os.path.join(backup_path, name)
+                if log_callback:
+                    log_callback(f"Fazendo backup Apollo: {name} -> backup/")
+                shutil.copy2(full_path, dest_file)
+                copied_count += 1
+        
+        if log_callback:
+            log_callback(f"Backup do Apollo concluído. {copied_count} arquivos (EXE/DLL) copiados para {backup_path}")
+        return True
+    except Exception as e:
+        if log_callback:
+            log_callback(f"Erro durante backup do Apollo (EXE/DLL): {str(e)}")
+        return False
+
 def execute_script_as_admin(script_path, log_callback=None, parameters=""):
     """
     Runs the selected script elevated as Administrator and blocks/waits for completion.

@@ -163,7 +163,7 @@ class AtualizadorApp(ctk.CTk):
         tab.grid_rowconfigure(1, weight=0)
 
         # Left Column Frame (Execution Details)
-        self.dl_left_frame = ctk.CTkFrame(tab)
+        self.dl_left_frame = ctk.CTkScrollableFrame(tab)
         self.dl_left_frame.grid(row=0, column=0, padx=(10, 5), pady=10, sticky="nsew")
         self.dl_left_frame.grid_columnconfigure(0, weight=1)
 
@@ -196,7 +196,7 @@ class AtualizadorApp(ctk.CTk):
         self.recap_ftp_lbl.grid(row=3, column=0, padx=10, pady=2, sticky="w")
 
         # Right Column Frame (Options and Brand Checklist)
-        self.dl_right_frame = ctk.CTkFrame(tab)
+        self.dl_right_frame = ctk.CTkScrollableFrame(tab)
         self.dl_right_frame.grid(row=0, column=1, padx=(5, 10), pady=10, sticky="nsew")
         self.dl_right_frame.grid_columnconfigure(0, weight=1)
         self.dl_right_frame.grid_rowconfigure(8, weight=1)
@@ -687,8 +687,10 @@ class AtualizadorApp(ctk.CTk):
         # Create window
         popup = ctk.CTkToplevel(self)
         popup.title("Limpeza de Executáveis - NBS")
-        popup.geometry("620x620")
-        popup.minsize(550, 480)
+        screen_h = self.winfo_screenheight()
+        target_h = min(620, max(440, screen_h - 120))
+        popup.geometry(f"640x{target_h}")
+        popup.minsize(520, 400)
         popup.grab_set()  # Make modal
 
         # Title labels
@@ -893,9 +895,14 @@ class AtualizadorApp(ctk.CTk):
                 messagebox.showwarning("Aviso", "Nenhum arquivo selecionado para exclusão.", parent=popup)
                 return
             
-            confirm_msg = "Tem certeza de que deseja EXCLUIR DEFINITIVAMENTE os seguintes arquivos executáveis?\n\n"
-            for p in to_delete:
+            total_sel = len(to_delete)
+            confirm_msg = f"Tem certeza de que deseja EXCLUIR DEFINITIVAMENTE os {total_sel} arquivo(s) selecionado(s)?\n\n"
+            max_preview = 6
+            for p in to_delete[:max_preview]:
                 confirm_msg += f"• {os.path.basename(p)}\n"
+            
+            if total_sel > max_preview:
+                confirm_msg += f"\n... e mais {total_sel - max_preview} arquivo(s) selecionado(s)."
             
             confirm = messagebox.askyesno("Confirmar Exclusão", confirm_msg, parent=popup)
             if confirm:
@@ -909,7 +916,11 @@ class AtualizadorApp(ctk.CTk):
                         errors.append(f"{os.path.basename(p)}: {str(err)}")
                 
                 if errors:
-                    err_msg = f"Foram excluídos {deleted_count} arquivos.\n\nErros ocorridos:\n" + "\n".join(errors)
+                    max_err_preview = 5
+                    err_msg = f"Foram excluídos {deleted_count} de {total_sel} arquivos.\n\nErros ocorridos:\n"
+                    err_msg += "\n".join(errors[:max_err_preview])
+                    if len(errors) > max_err_preview:
+                        err_msg += f"\n... e mais {len(errors) - max_err_preview} erro(s)."
                     messagebox.showerror("Exclusão Parcial", err_msg, parent=popup)
                 else:
                     messagebox.showinfo("Sucesso", f"Todos os {deleted_count} arquivos selecionados foram excluídos com sucesso!", parent=popup)
@@ -1132,6 +1143,7 @@ class AtualizadorApp(ctk.CTk):
         self.linx_dl_apoio_trocaserie_var.set(c.get("linx_download_apoio_trocaserie", False))
         self.linx_dl_apoio_verificadiaria_var.set(c.get("linx_download_apoio_verificadiaria", False))
         self.linx_dl_integrador_var.set(c.get("linx_download_integrador", False))
+        self.linx_backup_apollo_var.set(c.get("linx_backup_apollo", False))
 
         # Linx settings templates
         set_entry_text(self.linx_url_delphi_entry, c.get("linx_url_delphi_template", "").strip() or config.DEFAULT_CONFIG["linx_url_delphi_template"])
@@ -1148,6 +1160,8 @@ class AtualizadorApp(ctk.CTk):
         set_entry_text(self.linx_service_datasnap_entry, c.get("linx_service_datasnap", "RedirecionaDatasnap"))
         set_entry_text(self.linx_service_3camadas_entry, c.get("linx_service_3camadas", "VerificaServer3Camadas"))
         set_entry_text(self.linx_service_integrador_entry, c.get("linx_service_integrador", "dmLDIServer"))
+        if hasattr(self, 'linx_kill_pattern_entry'):
+            set_entry_text(self.linx_kill_pattern_entry, c.get("linx_kill_process_pattern", "wsContabil"))
 
         # Load Linx target paths
         if self.os_type == "Windows":
@@ -1259,6 +1273,7 @@ class AtualizadorApp(ctk.CTk):
         c["linx_download_apoio_trocaserie"] = self.linx_dl_apoio_trocaserie_var.get()
         c["linx_download_apoio_verificadiaria"] = self.linx_dl_apoio_verificadiaria_var.get()
         c["linx_download_integrador"] = self.linx_dl_integrador_var.get()
+        c["linx_backup_apollo"] = self.linx_backup_apollo_var.get()
 
         # Linx settings templates
         c["linx_url_delphi_template"] = self.linx_url_delphi_entry.get()
@@ -1275,6 +1290,8 @@ class AtualizadorApp(ctk.CTk):
         c["linx_service_datasnap"] = self.linx_service_datasnap_entry.get()
         c["linx_service_3camadas"] = self.linx_service_3camadas_entry.get()
         c["linx_service_integrador"] = self.linx_service_integrador_entry.get()
+        if hasattr(self, 'linx_kill_pattern_entry'):
+            c["linx_kill_process_pattern"] = self.linx_kill_pattern_entry.get().strip()
 
         # Linx install paths
         if self.os_type == "Windows":
@@ -1774,6 +1791,13 @@ class AtualizadorApp(ctk.CTk):
         self.linx_changelog_box.grid(row=3, column=0, padx=20, pady=(0, 20), sticky="nsew")
 
         linx_changelog_text = (
+            "=== Versão 1.1.0 ===\n"
+            "- Adicionada opção de backup dos executáveis (.exe) e bibliotecas (.dll) da pasta C:\\Apollo\\atualiza antes da descompactação.\n"
+            "- Adicionada flag na seleção de pacotes para ativar/desativar o backup do Apollo.\n"
+            "- A pasta de backup do Apollo agora é gerada dinamicamente contendo a data no nome (ex: backup_DDMMYYYY).\n"
+            "- Adicionada opção no menu de Serviços do Windows para encerrar processos do ApolloServer (powershell stop-process -name *serverapp*).\n"
+            "- Suporte ao encerramento de processos executáveis ativos (como wsContabil.exe) por padrão Regex ou nome via PowerShell.\n"
+            "- Limpeza e exclusão automática dos arquivos zipados (.zip) da pasta C:\\atualizacao após a descompactação e cópia dos arquivos.\n\n"
             "=== Versão 1.0.9 ===\n"
             "- Corrigido problema de detecção de status de serviços do Windows (DFeServico, etc.) em sistemas operacionais em outros idiomas (como Português-BR) adaptando a leitura para múltiplos padrões de resposta do comando 'sc query'.\n\n"
             "=== Versão 1.0.8 ===\n"
@@ -2623,7 +2647,7 @@ class AtualizadorApp(ctk.CTk):
         tab.grid_rowconfigure(1, weight=0)
 
         # Left Column Frame (Parameters)
-        self.linx_dl_left_frame = ctk.CTkFrame(tab)
+        self.linx_dl_left_frame = ctk.CTkScrollableFrame(tab)
         self.linx_dl_left_frame.grid(row=0, column=0, padx=(10, 5), pady=10, sticky="nsew")
         self.linx_dl_left_frame.grid_columnconfigure(0, weight=1)
 
@@ -2653,7 +2677,7 @@ class AtualizadorApp(ctk.CTk):
         ctk.CTkButton(path_frame, text="...", width=30, command=lambda: self.browse_directory(self.linx_path_entry)).grid(row=0, column=1, padx=(5, 0))
 
         # Right Column Frame (Options)
-        self.linx_dl_right_frame = ctk.CTkFrame(tab)
+        self.linx_dl_right_frame = ctk.CTkScrollableFrame(tab)
         self.linx_dl_right_frame.grid(row=0, column=1, padx=(5, 10), pady=10, sticky="nsew")
         self.linx_dl_right_frame.grid_columnconfigure(0, weight=1)
 
@@ -2699,6 +2723,13 @@ class AtualizadorApp(ctk.CTk):
         self.linx_dl_integrador_check = ctk.CTkCheckBox(self.linx_dl_right_frame, text="Linx DMS Integrador", variable=self.linx_dl_integrador_var, command=self.save_ui_to_config)
         self.linx_dl_integrador_check.grid(row=10, column=0, padx=15, pady=5, sticky="w")
 
+        # Opções de Backup
+        ctk.CTkLabel(self.linx_dl_right_frame, text="Opções de Backup", font=ctk.CTkFont(size=14, weight="bold")).grid(row=11, column=0, padx=15, pady=(12, 5), sticky="w")
+
+        self.linx_backup_apollo_var = ctk.BooleanVar()
+        self.linx_backup_apollo_check = ctk.CTkCheckBox(self.linx_dl_right_frame, text="Backup EXE e DLLs (C:\\Apollo\\atualiza) antes de descompactar", variable=self.linx_backup_apollo_var, command=self.save_ui_to_config)
+        self.linx_backup_apollo_check.grid(row=12, column=0, padx=15, pady=5, sticky="w")
+
         # Bottom Frame (Status, Progress and Launch Button)
         self.linx_dl_bottom_frame = ctk.CTkFrame(tab)
         self.linx_dl_bottom_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=(5, 10), sticky="ew")
@@ -2729,7 +2760,7 @@ class AtualizadorApp(ctk.CTk):
         tab.grid_rowconfigure(0, weight=1)
 
         # Left Frame: Windows Services Control Panel
-        self.services_frame = ctk.CTkFrame(tab)
+        self.services_frame = ctk.CTkScrollableFrame(tab)
         self.services_frame.grid(row=0, column=0, padx=(10, 5), pady=10, sticky="nsew")
         self.services_frame.grid_columnconfigure(0, weight=1)
         self.services_frame.grid_rowconfigure(4, weight=1) # Spacer
@@ -2752,7 +2783,26 @@ class AtualizadorApp(ctk.CTk):
 
         # Refresh Services Button
         self.refresh_services_btn = ctk.CTkButton(self.services_frame, text="Atualizar Status", font=ctk.CTkFont(weight="bold"), command=self.refresh_linx_services)
-        self.refresh_services_btn.grid(row=3, column=0, padx=15, pady=15, sticky="ew")
+        self.refresh_services_btn.grid(row=3, column=0, padx=15, pady=(15, 5), sticky="ew")
+
+        # Stop Apollo Server Button (*serverapp*)
+        self.stop_apolloserver_btn = ctk.CTkButton(self.services_frame, text="Fechar ApolloServer (*serverapp*)", font=ctk.CTkFont(size=12, weight="bold"), fg_color="#d9534f", hover_color="#c9302c", command=self.stop_apollo_server_process)
+        self.stop_apolloserver_btn.grid(row=4, column=0, padx=15, pady=(5, 5), sticky="ew")
+
+        # Custom Process Termination Section (Regex/Name, e.g. wsContabil)
+        kill_section_frame = ctk.CTkFrame(self.services_frame, fg_color="transparent")
+        kill_section_frame.grid(row=5, column=0, padx=15, pady=(5, 15), sticky="ew")
+        kill_section_frame.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(kill_section_frame, text="Fechar Processos (Regex / Nome):", font=ctk.CTkFont(size=11, weight="bold"), anchor="w").grid(row=0, column=0, columnspan=2, pady=(0, 2), sticky="w")
+
+        self.linx_kill_pattern_entry = ctk.CTkEntry(kill_section_frame, placeholder_text="ex: wsContabil ou *serverapp*")
+        self.linx_kill_pattern_entry.grid(row=1, column=0, sticky="ew", padx=(0, 5))
+        self.linx_kill_pattern_entry.bind("<FocusOut>", lambda e: self.save_ui_to_config())
+        self.linx_kill_pattern_entry.bind("<Return>", lambda e: self.save_ui_to_config())
+
+        self.stop_custom_process_btn = ctk.CTkButton(kill_section_frame, text="Fechar", width=65, font=ctk.CTkFont(size=12, weight="bold"), fg_color="#d9534f", hover_color="#c9302c", command=self.stop_process_by_regex)
+        self.stop_custom_process_btn.grid(row=1, column=1)
 
 
         # Right Frame: Extraction & Installation Panel
@@ -2962,6 +3012,65 @@ class AtualizadorApp(ctk.CTk):
         # Refresh all service statuses
         self.refresh_linx_services()
 
+    def stop_apollo_server_process(self):
+        def run_stop():
+            try:
+                self.after(0, lambda: self.log_to_linx_update_console("Solicitação para encerrar processos do ApolloServer (*serverapp*)..."))
+                if platform.system() == "Windows":
+                    import subprocess
+                    cmd = ["powershell", "-Command", "stop-process -name *serverapp* -Force"]
+                    res = subprocess.run(cmd, capture_output=True, text=True, creationflags=0x08000000)
+                    if res.returncode == 0:
+                        self.after(0, lambda: messagebox.showinfo("Sucesso", "Processos do ApolloServer (*serverapp*) encerrados com sucesso!"))
+                        self.after(0, lambda: self.log_to_linx_update_console("Processos do ApolloServer (*serverapp*) encerrados com sucesso."))
+                    else:
+                        err_out = res.stderr.strip() or res.stdout.strip() or "Nenhum processo *serverapp* em execução."
+                        self.after(0, lambda: messagebox.showinfo("Informação", f"Resultado do comando ApolloServer:\n{err_out}"))
+                        self.after(0, lambda: self.log_to_linx_update_console(f"Resultado ApolloServer: {err_out}"))
+                else:
+                    self.after(0, lambda: messagebox.showinfo("Simulação (Linux)", "Comando executado (Simulado):\npowershell stop-process -name *serverapp*"))
+                    self.after(0, lambda: self.log_to_linx_update_console("[Linux SIMULADO] Comando enviado: powershell stop-process -name *serverapp*"))
+            except Exception as e:
+                err_msg = str(e)
+                self.after(0, lambda: messagebox.showerror("Erro", f"Erro ao fechar ApolloServer:\n{err_msg}"))
+                self.after(0, lambda: self.log_to_linx_update_console(f"Erro ao fechar ApolloServer: {err_msg}"))
+
+        threading.Thread(target=run_stop, daemon=True).start()
+
+    def stop_process_by_regex(self, pattern=None):
+        if not pattern:
+            pattern = self.linx_kill_pattern_entry.get().strip() if hasattr(self, 'linx_kill_pattern_entry') else "wsContabil"
+        
+        if not pattern:
+            messagebox.showwarning("Aviso", "Por favor, informe o nome ou padrão Regex do processo a encerrar.")
+            return
+
+        def run_kill():
+            try:
+                self.after(0, lambda: self.log_to_linx_update_console(f"Solicitação para encerrar processos via Regex/Nome: '{pattern}'..."))
+                if platform.system() == "Windows":
+                    import subprocess
+                    safe_pattern = pattern.replace("'", "''")
+                    ps_cmd = f"Get-Process | Where-Object {{ $_.ProcessName -match '{safe_pattern}' -or $_.Name -like '*{safe_pattern}*' }} | Stop-Process -Force"
+                    cmd = ["powershell", "-Command", ps_cmd]
+                    res = subprocess.run(cmd, capture_output=True, text=True, creationflags=0x08000000)
+                    if res.returncode == 0:
+                        self.after(0, lambda: messagebox.showinfo("Sucesso", f"Processo(s) correspondente(s) a '{pattern}' encerrado(s) com sucesso!"))
+                        self.after(0, lambda: self.log_to_linx_update_console(f"Processo(s) correspondente(s) a '{pattern}' encerrado(s) com sucesso."))
+                    else:
+                        err_out = res.stderr.strip() or res.stdout.strip() or f"Nenhum processo correspondente a '{pattern}' em execução."
+                        self.after(0, lambda: messagebox.showinfo("Informação", f"Resultado do encerramento ({pattern}):\n{err_out}"))
+                        self.after(0, lambda: self.log_to_linx_update_console(f"Resultado do encerramento ({pattern}): {err_out}"))
+                else:
+                    self.after(0, lambda: messagebox.showinfo("Simulação (Linux)", f"Comando executado (Simulado):\npowershell Get-Process | Where-Object {{ $_.ProcessName -match '{pattern}' }} | Stop-Process -Force"))
+                    self.after(0, lambda: self.log_to_linx_update_console(f"[Linux SIMULADO] Encerrando processos por padrão Regex: '{pattern}'"))
+            except Exception as e:
+                err_msg = str(e)
+                self.after(0, lambda: messagebox.showerror("Erro", f"Erro ao fechar processo ({pattern}):\n{err_msg}"))
+                self.after(0, lambda: self.log_to_linx_update_console(f"Erro ao fechar processo ({pattern}): {err_msg}"))
+
+        threading.Thread(target=run_kill, daemon=True).start()
+
     def setup_tab_linx_settings(self):
         tab = self.frame_linx_settings
         tab.grid_columnconfigure(0, weight=1)
@@ -3100,6 +3209,7 @@ class AtualizadorApp(ctk.CTk):
         self.linx_dl_apoio_trocaserie_check.configure(state=state)
         self.linx_dl_apoio_verificadiaria_check.configure(state=state)
         self.linx_dl_integrador_check.configure(state=state)
+        self.linx_backup_apollo_check.configure(state=state)
 
     def show_linx_running_buttons(self):
         self.linx_start_dl_btn.grid_forget()
@@ -3364,6 +3474,29 @@ class AtualizadorApp(ctk.CTk):
             total_zips = len(zip_files)
             log(f"Encontrados {total_zips} arquivos .zip para processar.")
 
+            # Encerrar processos em execução (ex: wsContabil) para evitar bloqueio de arquivos
+            kill_pat = c.get("linx_kill_process_pattern", "wsContabil").strip()
+            if kill_pat:
+                log(f"Verificando e encerrando processos ativos correspondentes a '{kill_pat}'...")
+                self.stop_process_by_regex(kill_pat)
+
+            # Realiza backup dos executáveis e DLLs da pasta C:\Apollo\atualiza somente antes da descompactação
+            if c.get("linx_backup_apollo", False):
+                status("Fazendo backup do Apollo (EXE/DLL)...")
+                log("\n--- INICIANDO BACKUP AUTOMÁTICO DO APOLLO (EXE E DLL) ---")
+                parent_apollo = os.path.dirname(dest_normal.rstrip("\\/"))
+                date_str = datetime.now().strftime("%d%m%Y")
+                backup_folder_name = f"backup_{date_str}"
+                backup_dir = os.path.join(parent_apollo if parent_apollo else dest_normal, backup_folder_name)
+                log(f"Diretório Apollo (origem): {os.path.abspath(dest_normal)}")
+                log(f"Diretório de backup (destino): {os.path.abspath(backup_dir)}")
+                backup_ok = utils.backup_apollo_executables_and_dlls(dest_normal, backup_dir, log)
+                if backup_ok:
+                    log(f"Backup dos arquivos EXE e DLL do Apollo realizado com sucesso em '{backup_folder_name}'.")
+                else:
+                    log("Aviso: Falha ao realizar backup do Apollo ou nenhum arquivo EXE/DLL encontrado.")
+                log("---------------------------------------------------------\n")
+
             for index, zip_name in enumerate(zip_files):
                 zip_path = os.path.join(download_dir, zip_name)
                 log(f"\n[{index+1}/{total_zips}] Processando: {zip_name}")
@@ -3465,6 +3598,21 @@ class AtualizadorApp(ctk.CTk):
                 except Exception as e:
                     log(f"Aviso ao remover pasta temporária: {str(e)}")
 
+            # Exclusão dos arquivos zipados da pasta de atualização de origem
+            log("\n--- EXCLUINDO ARQUIVOS COMPACTADOS (.ZIP) DE ORIGEM ---")
+            status("Excluindo arquivos zip baixados...")
+            deleted_zips_count = 0
+            for z_file in zip_files:
+                z_full_path = os.path.join(download_dir, z_file)
+                if os.path.exists(z_full_path):
+                    try:
+                        os.remove(z_full_path)
+                        log(f"Arquivo zip removido: {z_file}")
+                        deleted_zips_count += 1
+                    except Exception as e_rm:
+                        log(f"Aviso ao remover zip {z_file}: {str(e_rm)}")
+            log(f"Limpeza concluída. {deleted_zips_count} arquivos .zip removidos da pasta de origem.")
+
             log("\n--- PROCESSO DE ATUALIZAÇÃO CONCLUÍDO COM SUCESSO ---")
             status("Atualização Concluída.")
             progress(1.0)
@@ -3540,8 +3688,10 @@ class AtualizadorApp(ctk.CTk):
         # Create window
         popup = ctk.CTkToplevel(self)
         popup.title("Limpeza de Executáveis e DLLs - Linx DMS")
-        popup.geometry("620x620")
-        popup.minsize(550, 480)
+        screen_h = self.winfo_screenheight()
+        target_h = min(620, max(440, screen_h - 120))
+        popup.geometry(f"640x{target_h}")
+        popup.minsize(520, 400)
         popup.grab_set()  # Make modal
 
         # Title labels
@@ -3755,10 +3905,14 @@ class AtualizadorApp(ctk.CTk):
                 messagebox.showwarning("Aviso", "Nenhum arquivo selecionado para exclusão.", parent=popup)
                 return
             
-            # Confirmation
-            confirm_msg = "Tem certeza de que deseja EXCLUIR DEFINITIVAMENTE os seguintes arquivos executáveis ou DLLs?\n\n"
-            for p in to_delete:
+            total_sel = len(to_delete)
+            confirm_msg = f"Tem certeza de que deseja EXCLUIR DEFINITIVAMENTE os {total_sel} arquivo(s) selecionado(s)?\n\n"
+            max_preview = 6
+            for p in to_delete[:max_preview]:
                 confirm_msg += f"• {os.path.basename(p)}\n"
+            
+            if total_sel > max_preview:
+                confirm_msg += f"\n... e mais {total_sel - max_preview} arquivo(s) selecionado(s)."
             
             confirm = messagebox.askyesno("Confirmar Exclusão", confirm_msg, parent=popup)
             if confirm:
@@ -3772,7 +3926,11 @@ class AtualizadorApp(ctk.CTk):
                         errors.append(f"{os.path.basename(p)}: {str(err)}")
                 
                 if errors:
-                    err_msg = f"Foram excluídos {deleted_count} arquivos.\n\nErros ocorridos:\n" + "\n".join(errors)
+                    max_err_preview = 5
+                    err_msg = f"Foram excluídos {deleted_count} de {total_sel} arquivos.\n\nErros ocorridos:\n"
+                    err_msg += "\n".join(errors[:max_err_preview])
+                    if len(errors) > max_err_preview:
+                        err_msg += f"\n... e mais {len(errors) - max_err_preview} erro(s)."
                     messagebox.showerror("Exclusão Parcial", err_msg, parent=popup)
                 else:
                     messagebox.showinfo("Sucesso", f"Todos os {deleted_count} arquivos selecionados foram excluídos com sucesso!", parent=popup)
@@ -3797,8 +3955,10 @@ class AtualizadorApp(ctk.CTk):
         popup = ctk.CTkToplevel(self)
         title_suffix = "NBS" if system_name == "nbs" else "Linx"
         popup.title(f"Limpeza por Extensão - {title_suffix}")
-        popup.geometry("620x680")
-        popup.minsize(550, 520)
+        screen_h = self.winfo_screenheight()
+        target_h = min(660, max(460, screen_h - 100))
+        popup.geometry(f"640x{target_h}")
+        popup.minsize(520, 420)
         popup.grab_set()  # Make modal
 
         # Title labels
@@ -4036,9 +4196,14 @@ class AtualizadorApp(ctk.CTk):
                 messagebox.showwarning("Aviso", "Nenhum arquivo selecionado para exclusão.", parent=popup)
                 return
             
-            confirm_msg = "Tem certeza de que deseja EXCLUIR DEFINITIVAMENTE os seguintes arquivos?\n\n"
-            for p in to_delete:
+            total_sel = len(to_delete)
+            confirm_msg = f"Tem certeza de que deseja EXCLUIR DEFINITIVAMENTE os {total_sel} arquivo(s) selecionado(s)?\n\n"
+            max_preview = 6
+            for p in to_delete[:max_preview]:
                 confirm_msg += f"• {os.path.basename(p)}\n"
+            
+            if total_sel > max_preview:
+                confirm_msg += f"\n... e mais {total_sel - max_preview} arquivo(s) selecionado(s)."
             
             confirm = messagebox.askyesno("Confirmar Exclusão", confirm_msg, parent=popup)
             if confirm:
@@ -4052,7 +4217,11 @@ class AtualizadorApp(ctk.CTk):
                         errors.append(f"{os.path.basename(p)}: {str(err)}")
                 
                 if errors:
-                    err_msg = f"Foram excluídos {deleted_count} arquivos.\n\nErros ocorridos:\n" + "\n".join(errors)
+                    max_err_preview = 5
+                    err_msg = f"Foram excluídos {deleted_count} de {total_sel} arquivos.\n\nErros ocorridos:\n"
+                    err_msg += "\n".join(errors[:max_err_preview])
+                    if len(errors) > max_err_preview:
+                        err_msg += f"\n... e mais {len(errors) - max_err_preview} erro(s)."
                     messagebox.showerror("Exclusão Parcial", err_msg, parent=popup)
                 else:
                     messagebox.showinfo("Sucesso", f"Todos os {deleted_count} arquivos selecionados foram excluídos com sucesso!", parent=popup)

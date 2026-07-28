@@ -63,6 +63,8 @@ DEFAULT_CONFIG = {
     "linx_path_server_linux": "./3Camadas",
     "linx_path_client_linux": "./3Camadas_Atualiza",
     "linx_download_integrador": False,
+    "linx_backup_apollo": False,
+    "linx_kill_process_pattern": "wsContabil",
     "linx_url_integrador_template": "https://distribuicao.blob.core.windows.net/dms/DVI/LinxDMSIntegrador.zip",
     "crm_service_payara": "domain1"
 }
