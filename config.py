@@ -66,7 +66,9 @@ DEFAULT_CONFIG = {
     "linx_backup_apollo": False,
     "linx_kill_process_pattern": "wsContabil",
     "linx_url_integrador_template": "https://distribuicao.blob.core.windows.net/dms/DVI/LinxDMSIntegrador.zip",
-    "crm_service_payara": "domain1"
+    "crm_service_payara": "domain1",
+    "nbs_notes": "",
+    "linx_notes": ""
 }
 
 def encrypt_data(data_str: str) -> str:

@@ -1402,4 +1402,56 @@ class ApolloMixin:
         # Initial Scan
         scan_directory()
 
+    def setup_tab_linx_notes(self):
+        tab = self.frame_linx_notes
+        tab.grid_columnconfigure(0, weight=1)
+        tab.grid_rowconfigure(0, weight=0)
+        tab.grid_rowconfigure(1, weight=1)
+        tab.grid_rowconfigure(2, weight=0)
+
+        # Header Frame
+        header_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        header_frame.grid(row=0, column=0, padx=20, pady=(15, 10), sticky="ew")
+        header_frame.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(header_frame, text="Observações e Anotações (Linx DMS / Apollo)", font=ctk.CTkFont(size=18, weight="bold")).grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(header_frame, text="Campo de texto livre para anotações do sistema Linx DMS. Salvo automaticamente nas configurações.", font=ctk.CTkFont(size=12, slant="italic")).grid(row=1, column=0, sticky="w", pady=(2, 0))
+
+        # Multiline Textbox
+        self.linx_notes_box = ctk.CTkTextbox(tab, font=ctk.CTkFont(size=13), wrap="word")
+        self.linx_notes_box.grid(row=1, column=0, padx=20, pady=(0, 10), sticky="nsew")
+
+        # Load initial value from config
+        initial_notes = self.app_config.get("linx_notes", "")
+        if initial_notes:
+            self.linx_notes_box.insert("0.0", initial_notes)
+
+        # Footer Frame (Save Button & Feedback Status)
+        footer_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        footer_frame.grid(row=2, column=0, padx=20, pady=(0, 15), sticky="ew")
+        footer_frame.grid_columnconfigure(0, weight=1)
+
+        self.linx_notes_status_lbl = ctk.CTkLabel(footer_frame, text="", font=ctk.CTkFont(size=12))
+        self.linx_notes_status_lbl.grid(row=0, column=0, sticky="w")
+
+        btn_save = ctk.CTkButton(
+            footer_frame,
+            text="💾 Salvar Observações",
+            width=160,
+            height=35,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            command=self.save_linx_notes
+        )
+        btn_save.grid(row=0, column=1, sticky="e")
+
+    def save_linx_notes(self):
+        if hasattr(self, "linx_notes_box"):
+            notes_text = self.linx_notes_box.get("0.0", "end-1c")
+            self.app_config["linx_notes"] = notes_text
+            if config.save_config(self.app_config):
+                if hasattr(self, "linx_notes_status_lbl"):
+                    now_str = datetime.now().strftime("%H:%M:%S")
+                    self.linx_notes_status_lbl.configure(text=f"✓ Observações salvas às {now_str}", text_color="#2fa572")
+
+
 

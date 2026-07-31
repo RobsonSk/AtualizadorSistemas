@@ -60,6 +60,7 @@ O sistema possui comportamento **Cross-Platform**: funciona plenamente no Window
     *   **Botão de Pesquisa Customizada**: Permite selecionar interativamente qualquer outra pasta do disco para realizar o escaneamento.
     *   **Pesquisa Avançada (Glob e Regex)**: Filtra os arquivos usando curingas comuns (Ex: `*2026*.dll`) ou expressões regulares avançadas (Ex: `^DMS_.*\.exe$`).
 *   **Limpeza por Extensão (Linx)**: Permite pesquisar e remover arquivos de qualquer extensão informada pelo usuário (ex: `.log`, `.tmp`, `.zip`) dentro das pastas do Linx ou outro diretório customizado de forma interativa.
+*   **Menu de Observações (NBS & Linx DMS)**: Campo de texto livre sem limite de caracteres e com suporte a quebras de linha para anotações, lembretes e históricos locais, persistido automaticamente no arquivo de configuração criptografado (`config.enc`).
 
 ### 4. Configurações Dinâmicas e Tema Sincronizado
 *   **Templates de URL**: Permite configurar e salvar todas as URLs HTTP utilizadas no download do Linx através de curingas dinâmicos de `{version}` e `{package}`.

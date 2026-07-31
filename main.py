@@ -94,6 +94,7 @@ class AtualizadorApp(ctk.CTk, NBSMixin, ApolloMixin, CommonMixin):
         self.nav_btn7 = ctk.CTkButton(self.sidebar_frame, text="Atualização CRMWeb", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("crmweb"))
         self.nav_btn4 = ctk.CTkButton(self.sidebar_frame, text="Configurações", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("settings"))
         self.nav_btn5 = ctk.CTkButton(self.sidebar_frame, text="Sobre o App", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("about"))
+        self.nav_btn_notes = ctk.CTkButton(self.sidebar_frame, text="📝 Observações", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("nbs_notes"))
 
         # Linx Navigation Buttons
         self.linx_nav_btn_download = ctk.CTkButton(self.sidebar_frame, text="Download Linx", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("linx_download"))
@@ -101,6 +102,7 @@ class AtualizadorApp(ctk.CTk, NBSMixin, ApolloMixin, CommonMixin):
         self.linx_nav_btn_utilities = ctk.CTkButton(self.sidebar_frame, text="Utilitários Linx", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("linx_utilities"))
         self.linx_nav_btn_settings = ctk.CTkButton(self.sidebar_frame, text="Configurações Linx", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("linx_settings"))
         self.linx_nav_btn_about = ctk.CTkButton(self.sidebar_frame, text="Sobre o Linx", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("linx_about"))
+        self.linx_nav_btn_notes = ctk.CTkButton(self.sidebar_frame, text="📝 Observações", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("linx_notes"))
 
         # General back button
         self.nav_btn_back_to_selection = ctk.CTkButton(self.sidebar_frame, text="⬅ Alterar Sistema", anchor="center", height=35, fg_color="transparent", border_width=1, border_color=("#3a7ebf", "#1f538d"), font=ctk.CTkFont(size=12, weight="bold"), command=self.show_system_selection_screen)
@@ -118,6 +120,7 @@ class AtualizadorApp(ctk.CTk, NBSMixin, ApolloMixin, CommonMixin):
         self.frame_crmweb = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.frame_settings = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.frame_about = ctk.CTkFrame(self.content_frame, fg_color="transparent")
+        self.frame_nbs_notes = ctk.CTkFrame(self.content_frame, fg_color="transparent")
 
         # Linx Navigation Frames
         self.frame_linx_download = ctk.CTkFrame(self.content_frame, fg_color="transparent")
@@ -125,6 +128,7 @@ class AtualizadorApp(ctk.CTk, NBSMixin, ApolloMixin, CommonMixin):
         self.frame_linx_utilities = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.frame_linx_settings = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.frame_linx_about = ctk.CTkFrame(self.content_frame, fg_color="transparent")
+        self.frame_linx_notes = ctk.CTkFrame(self.content_frame, fg_color="transparent")
 
         self.setup_tab_download()
         self.setup_tab_execution()
@@ -133,6 +137,7 @@ class AtualizadorApp(ctk.CTk, NBSMixin, ApolloMixin, CommonMixin):
         self.setup_tab_crmweb()
         self.setup_tab_settings()
         self.setup_tab_about()
+        self.setup_tab_nbs_notes()
 
         # Set up Linx tabs
         self.setup_tab_linx_download()
@@ -140,6 +145,7 @@ class AtualizadorApp(ctk.CTk, NBSMixin, ApolloMixin, CommonMixin):
         self.setup_tab_linx_utilities()
         self.setup_tab_linx_settings()
         self.setup_tab_linx_about()
+        self.setup_tab_linx_notes()
 
         # Initialize configurations in GUI fields
         self.load_config_into_ui()
@@ -163,6 +169,14 @@ class AtualizadorApp(ctk.CTk, NBSMixin, ApolloMixin, CommonMixin):
     def on_closing(self):
         try:
             self.save_ui_to_config()
+        except Exception:
+            pass
+        try:
+            self.save_nbs_notes()
+        except Exception:
+            pass
+        try:
+            self.save_linx_notes()
         except Exception:
             pass
         self.destroy()
@@ -195,6 +209,14 @@ class AtualizadorApp(ctk.CTk, NBSMixin, ApolloMixin, CommonMixin):
         self.nav_btn4.configure(state=state)
         self.nav_btn5.configure(state=state)
         self.nav_btn6.configure(state=state)
+        self.nav_btn7.configure(state=state)
+        self.nav_btn_notes.configure(state=state)
+        self.linx_nav_btn_download.configure(state=state)
+        self.linx_nav_btn_update.configure(state=state)
+        self.linx_nav_btn_utilities.configure(state=state)
+        self.linx_nav_btn_settings.configure(state=state)
+        self.linx_nav_btn_about.configure(state=state)
+        self.linx_nav_btn_notes.configure(state=state)
 
 
     def show_running_buttons(self):
@@ -221,12 +243,14 @@ class AtualizadorApp(ctk.CTk, NBSMixin, ApolloMixin, CommonMixin):
         self.nav_btn7.configure(fg_color=("#3a7ebf", "#1f538d") if name == "crmweb" else "transparent")
         self.nav_btn4.configure(fg_color=("#3a7ebf", "#1f538d") if name == "settings" else "transparent")
         self.nav_btn5.configure(fg_color=("#3a7ebf", "#1f538d") if name == "about" else "transparent")
+        self.nav_btn_notes.configure(fg_color=("#3a7ebf", "#1f538d") if name == "nbs_notes" else "transparent")
 
         self.linx_nav_btn_download.configure(fg_color=("#3a7ebf", "#1f538d") if name == "linx_download" else "transparent")
         self.linx_nav_btn_update.configure(fg_color=("#3a7ebf", "#1f538d") if name == "linx_update" else "transparent")
         self.linx_nav_btn_utilities.configure(fg_color=("#3a7ebf", "#1f538d") if name == "linx_utilities" else "transparent")
         self.linx_nav_btn_settings.configure(fg_color=("#3a7ebf", "#1f538d") if name == "linx_settings" else "transparent")
         self.linx_nav_btn_about.configure(fg_color=("#3a7ebf", "#1f538d") if name == "linx_about" else "transparent")
+        self.linx_nav_btn_notes.configure(fg_color=("#3a7ebf", "#1f538d") if name == "linx_notes" else "transparent")
 
         # Hide/show appropriate frame
         if name == "download":
@@ -265,6 +289,11 @@ class AtualizadorApp(ctk.CTk, NBSMixin, ApolloMixin, CommonMixin):
         else:
             self.frame_about.grid_remove()
 
+        if name == "nbs_notes":
+            self.frame_nbs_notes.grid(row=0, column=0, sticky="nsew")
+        else:
+            self.frame_nbs_notes.grid_remove()
+
         # Linx frames
         if name == "linx_download":
             self.frame_linx_download.grid(row=0, column=0, sticky="nsew")
@@ -293,6 +322,11 @@ class AtualizadorApp(ctk.CTk, NBSMixin, ApolloMixin, CommonMixin):
         else:
             self.frame_linx_about.grid_remove()
 
+        if name == "linx_notes":
+            self.frame_linx_notes.grid(row=0, column=0, sticky="nsew")
+        else:
+            self.frame_linx_notes.grid_remove()
+
 
     def show_nbs_sidebar(self):
         # Hide all Linx buttons
@@ -301,6 +335,7 @@ class AtualizadorApp(ctk.CTk, NBSMixin, ApolloMixin, CommonMixin):
         self.linx_nav_btn_utilities.grid_remove()
         self.linx_nav_btn_settings.grid_remove()
         self.linx_nav_btn_about.grid_remove()
+        self.linx_nav_btn_notes.grid_remove()
         
         # Show all NBS buttons
         self.nav_btn1.grid(row=2, column=0, padx=15, pady=5, sticky="ew")
@@ -310,9 +345,10 @@ class AtualizadorApp(ctk.CTk, NBSMixin, ApolloMixin, CommonMixin):
         self.nav_btn7.grid(row=6, column=0, padx=15, pady=5, sticky="ew")
         self.nav_btn4.grid(row=7, column=0, padx=15, pady=5, sticky="ew")
         self.nav_btn5.grid(row=8, column=0, padx=15, pady=5, sticky="ew")
+        self.nav_btn_notes.grid(row=9, column=0, padx=15, pady=5, sticky="ew")
         
         # Show back button
-        self.nav_btn_back_to_selection.grid(row=10, column=0, padx=15, pady=15, sticky="ew")
+        self.nav_btn_back_to_selection.grid(row=11, column=0, padx=15, pady=15, sticky="ew")
 
 
     def show_linx_sidebar(self):
@@ -324,6 +360,7 @@ class AtualizadorApp(ctk.CTk, NBSMixin, ApolloMixin, CommonMixin):
         self.nav_btn7.grid_remove()
         self.nav_btn4.grid_remove()
         self.nav_btn5.grid_remove()
+        self.nav_btn_notes.grid_remove()
         
         # Show Linx buttons
         self.linx_nav_btn_download.grid(row=2, column=0, padx=15, pady=5, sticky="ew")
@@ -331,9 +368,10 @@ class AtualizadorApp(ctk.CTk, NBSMixin, ApolloMixin, CommonMixin):
         self.linx_nav_btn_utilities.grid(row=4, column=0, padx=15, pady=5, sticky="ew")
         self.linx_nav_btn_settings.grid(row=5, column=0, padx=15, pady=5, sticky="ew")
         self.linx_nav_btn_about.grid(row=6, column=0, padx=15, pady=5, sticky="ew")
+        self.linx_nav_btn_notes.grid(row=7, column=0, padx=15, pady=5, sticky="ew")
         
         # Show back button
-        self.nav_btn_back_to_selection.grid(row=10, column=0, padx=15, pady=15, sticky="ew")
+        self.nav_btn_back_to_selection.grid(row=11, column=0, padx=15, pady=15, sticky="ew")
 
 
     def setup_system_selection_ui(self):
