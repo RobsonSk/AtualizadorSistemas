@@ -16,13 +16,16 @@ O sistema possui comportamento **Cross-Platform**: funciona plenamente no Window
 
 ## 📂 Estrutura do Projeto
 
-*   `main.py`: Código-fonte principal que renderiza a interface gráfica moderna em CustomTkinter, gerencia as threads em background e manipula os componentes visuais.
+*   `main.py`: Código-fonte principal que inicializa o CustomTkinter, gerencia a tela de seleção de sistemas (NBS vs Linx DMS), navegação entre sidebars/frames e o loop principal da aplicação.
+*   `ui_nbs.py`: Módulo que implementa a interface visual e lógica de negócios do **Sistema NBS** (downloads FTP por marca/interface, execução de scripts SQL/DB, distribuição remota em rede, CRM Web, aba utilitários e configurações NBS).
+*   `ui_apollo.py`: Módulo que implementa a interface visual e lógica de negócios do **Sistema Linx DMS / Apollo** (downloads HTTP de pacotes evolutivos, controle de serviços do Windows, atualizações automatizadas e configurações Apollo).
+*   `ui_common.py`: Módulo com componentes e popups visuais compartilhados por ambos os sistemas (ferramenta de limpeza interativa de diretórios por extensão e reinicialização remota de servidores via PowerShell).
 *   `ftp_client.py`: Manipulador das conexões FTP para o NBS. Implementa listagem de arquivos e subpastas e downloads com progresso.
-*   `utils.py`: Funções utilitárias como detecção de datas históricas, backups locais de arquivos `.exe`, execução de processos de forma elevada (UAC) e cópias de arquivos recursivas.
-*   `config.py`: Gerencia a leitura, escrita e preenchimento de valores padrão no arquivo `config.json`.
+*   `utils.py`: Funções utilitárias como detecção de datas históricas, backups locais de arquivos `.exe`, execução de processos de forma elevada (UAC), cópias de arquivos recursivas e comandos remotos PowerShell.
+*   `config.py`: Gerencia a leitura, escrita, criptografia XOR+Base64 e preenchimento de valores padrão do arquivo de configuração (`config.enc`).
 *   `requirements.txt`: Dependências do projeto (`customtkinter` e `pyinstaller`).
-*   `build.bat`: Script de lote para compilação automatizada do executável `AtualizadorSistemas.exe` no Windows.
-*   `.gitignore`: Arquivo de exclusão do Git configurado para ignorar caches, ambientes virtuais (`venv/`), pastas locais de atualização e o arquivo `config.json`.
+*   `build.bat`: Script de lote para compilação automatizada do executável `AtualizadorSistemas.exe` no Windows via PyInstaller.
+*   `.gitignore`: Arquivo de exclusão do Git configurado para ignorar caches, ambientes virtuais (`venv/`), pastas locais de atualização e arquivos temporários.
 
 ---
 

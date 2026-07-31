@@ -454,3 +454,85 @@ def download_http_file(url, local_filepath, progress_callback=None, check_pause_
         raise e
 
 
+def restart_remote_server_powershell(server_name_or_ip, force=True, user=None, password=None, log_callback=None):
+    """
+    Executa um comando PowerShell para reiniciar um servidor remoto/adjacente.
+    Suporta a flag -Force para desconectar sessões ativas de usuários e credenciais opcionais.
+    Em sistemas não-Windows (Linux), simula a ação.
+    """
+    if not server_name_or_ip or not server_name_or_ip.strip():
+        if log_callback:
+            log_callback("Erro: Nenhum servidor ou IP especificado para reinício.")
+        return False
+
+    server = server_name_or_ip.strip()
+
+    if log_callback:
+        log_callback(f"Iniciando procedimento de reinício no servidor: {server}")
+
+    if platform.system() != "Windows":
+        if log_callback:
+            log_callback("[Linux SIMULADO] Verificando conectividade e permissões com o servidor remoto...")
+            time.sleep(1)
+            force_str = " -Force" if force else ""
+            user_str = f" com credenciais do usuário '{user}'" if user else ""
+            log_callback(f"[Linux SIMULADO] Executando comando PowerShell: Restart-Computer -ComputerName '{server}'{force_str}{user_str}")
+            time.sleep(2)
+            log_callback(f"[Linux SIMULADO] Comando de reinício enviado com sucesso para {server}.")
+        return True
+
+    # Execução no Windows
+    try:
+        import subprocess
+
+        force_flag = "-Force" if force else ""
+
+        if user and password:
+            safe_user = user.replace("'", "''")
+            safe_pass = password.replace("'", "''")
+            ps_script = f"""
+            $secpasswd = ConvertTo-SecureString '{safe_pass}' -AsPlainText -Force
+            $cred = New-Object System.Management.Automation.PSCredential ('{safe_user}', $secpasswd)
+            Restart-Computer -ComputerName '{server}' -Credential $cred {force_flag} -ErrorAction Stop
+            """
+        else:
+            ps_script = f"Restart-Computer -ComputerName '{server}' {force_flag} -ErrorAction Stop"
+
+        if log_callback:
+            log_callback(f"Executando PowerShell: Restart-Computer -ComputerName '{server}' {force_flag}...")
+
+        process = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        if process.returncode == 0:
+            if log_callback:
+                log_callback(f"Comando de reinício enviado com sucesso para {server}.")
+            return True
+        else:
+            err_msg = process.stderr.strip() or process.stdout.strip()
+            if log_callback:
+                log_callback(f"Erro no PowerShell ({server}): {err_msg}")
+                log_callback(f"Tentando comando alternativo: shutdown /r /f /t 0 /m \\\\{server}...")
+            
+            shutdown_cmd = f"shutdown /r /f /t 0 /m \\\\{server}"
+            p2 = subprocess.run(shutdown_cmd, shell=True, capture_output=True, text=True, timeout=15)
+            if p2.returncode == 0:
+                if log_callback:
+                    log_callback(f"Comando 'shutdown' enviado com sucesso para \\\\{server}.")
+                return True
+            else:
+                if log_callback:
+                    log_callback(f"Falha também no comando 'shutdown': {p2.stderr.strip()}")
+                return False
+
+    except Exception as e:
+        if log_callback:
+            log_callback(f"Exceção durante o reinício do servidor: {str(e)}")
+        return False
+
+
+
