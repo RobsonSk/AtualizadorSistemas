@@ -13,6 +13,7 @@ import customtkinter as ctk
 import config
 import ftp_client
 import utils
+from changelog import CHANGELOG_APOLLO
 
 class ApolloMixin:
     """Interface, abas e lógica de negócios específica do sistema Apollo/Linx."""
@@ -46,55 +47,7 @@ class ApolloMixin:
         self.linx_changelog_box = ctk.CTkTextbox(tab, font=ctk.CTkFont(family="monospace", size=11))
         self.linx_changelog_box.grid(row=3, column=0, padx=20, pady=(0, 20), sticky="nsew")
 
-        linx_changelog_text = (
-            "=== Versão 1.1.0 ===\n"
-            "- Adicionada opção de backup dos executáveis (.exe) e bibliotecas (.dll) da pasta C:\\Apollo\\atualiza antes da descompactação.\n"
-            "- Adicionada flag na seleção de pacotes para ativar/desativar o backup do Apollo.\n"
-            "- A pasta de backup do Apollo agora é gerada dinamicamente contendo a data no nome (ex: backup_DDMMYYYY).\n"
-            "- Adicionada opção no menu de Serviços do Windows para encerrar processos do ApolloServer (powershell stop-process -name *serverapp*).\n"
-            "- Suporte ao encerramento de processos executáveis ativos (como wsContabil.exe) por padrão Regex ou nome via PowerShell.\n"
-            "- Limpeza e exclusão automática dos arquivos zipados (.zip) da pasta C:\\atualizacao após a descompactação e cópia dos arquivos.\n\n"
-            "=== Versão 1.0.9 ===\n"
-            "- Corrigido problema de detecção de status de serviços do Windows (DFeServico, etc.) em sistemas operacionais em outros idiomas (como Português-BR) adaptando a leitura para múltiplos padrões de resposta do comando 'sc query'.\n\n"
-            "=== Versão 1.0.8 ===\n"
-            "- Adicionado o novo Utilitário de Limpeza por Extensão na aba Linx, permitindo a pesquisa e remoção de arquivos de qualquer extensão customizada (.log, .tmp, .zip, etc.).\n\n"
-            "=== Versão 1.0.7 ===\n"
-            "- Adicionada opção para download do Linx DMS Integrador (arquivo LinxDMSIntegrador.zip) e monitoramento do serviço dmLDIServer.\n"
-            "- Ajustadas pastas padrão do utilitário de exclusão Linx para C:\\Apollo e C:\\3camadas, e adicionado botão de busca para pasta customizada.\n"
-            "- Implementada criptografia simétrica (XOR + Base64) das configurações locais gravadas em Appdata/Roaming ou ~/.config/AtualizadorSistemas/config.enc.\n"
-            "- Integrada descompactação e execução elevada como Administrador para arquivos .exe e .msi internos do Integrador.\n\n"
-            "=== Versão 1.0.6 ===\n"
-            "- Adicionada aba 'Utilitários Linx' com exclusão de arquivos executáveis (.exe) e bibliotecas (.dll).\n"
-            "- Suporte a filtros de pesquisa inteligentes com padrões Glob (ex: *2026*.dll) e Expressões Regulares (Regex).\n"
-            "- Criado painel de monitoramento e controle assíncrono para os Serviços do Windows (DFeServico, RedirecionaDatasnap, VerificaServer3Camadas).\n"
-            "- Implementado fluxo automatizado de descompactação e movimentação de arquivos nos diretórios corretos (Apollo/Atualiza, 3Camadas Server/Client).\n"
-            "- Suporte para execução do Instalador Web (.exe/.msi) com privilégios de Administrador.\n"
-            "- Corrigidos problemas de segurança de threads (TclError) ao atualizar status de serviços de forma assíncrona.\n"
-            "- Ajustado tamanho e alinhamento dos cards na tela inicial (350px de largura com ancoragem de textos à esquerda).\n\n"
-            "=== Versão 1.0.5 ===\n"
-            "- Configuração de valores padrão para versão (5.19) e caminhos de atualização (C:\\atualizacao no Windows e /home/robson.santos@DTACENTER.MR/Dev/AtualizadorNBS no Linux).\n"
-            "- Salvamento automático de versão e caminho ao perder o foco (FocusOut), pressionar Enter (Return) ou ao fechar o programa.\n"
-            "- Corrigido problema de carregamento de interface que sobrescrevia as configurações com campos vazios na inicialização.\n"
-            "- Implementação de aba dedicada 'Sobre o Linx' com changelog e documentação específica.\n\n"
-            "=== Versão 1.0.4 ===\n"
-            "- Criação da aba de Configurações Linx para customização dinâmica de todos os templates de URL (HTTP).\n"
-            "- Correção de layout e compatibilização de temas (Light/Dark) na interface Linx.\n\n"
-            "=== Versão 1.0.3 ===\n"
-            "- Integração do controle de pausa ('Pausar' / 'Retomar') e cancelamento do download de pacotes Linx.\n"
-            "- Bloqueio completo de campos e botões da aba Linx durante o andamento do processo de download.\n\n"
-            "=== Versão 1.0.2 ===\n"
-            "- Adicionado suporte para múltiplos tipos de pacotes/marcas Linx: LINXDMS, HPE, BRAVOS, TOYOTA.\n"
-            "- Correção na formatação da versão, adicionando o prefixo 'v' automaticamente quando ausente.\n\n"
-            "=== Versão 1.0.1 ===\n"
-            "- Adicionado suporte a pacotes de 3 Camadas (Server / Client) e instalador Web completo.\n"
-            "- Implementação de progresso visual (barra de progresso) e console de log em tempo real para downloads HTTP.\n\n"
-            "=== Versão 1.0.0 ===\n"
-            "- Implementação inicial da aba de Downloads do Linx DMS.\n"
-            "- Suporte para download do pacote Delphi (Padrão) via HTTP.\n"
-            "- Seleção de múltiplos pacotes adicionais: DMS Comissões, Apoio (Troca Fornecedor, Troca Série, Verifica Diária).\n"
-            "- Preenchimento inteligente de URLs com substituição dinâmica de versão e tipo de pacote."
-        )
-        self.linx_changelog_box.insert("0.0", linx_changelog_text)
+        self.linx_changelog_box.insert("0.0", CHANGELOG_APOLLO)
         self.linx_changelog_box.configure(state="disabled")
 
 
