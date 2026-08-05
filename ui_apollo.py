@@ -36,7 +36,7 @@ class ApolloMixin:
         details_text = (
             "Desenvolvedor: Robson Santos\n"
             "Contato: robsonshk@gmail.com\n"
-            "Versão do Programa: 1.1.1\n"
+            "Versão do Programa: 1.2.0\n"
             "Finalidade: Facilitar o download, descompactação, aplicação de atualizações e limpeza de arquivos do sistema Linx DMS."
         )
         ctk.CTkLabel(info_frame, text=details_text, justify="left", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")

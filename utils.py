@@ -595,3 +595,56 @@ def take_screenshot(filename_prefix="nbs_update_completion", log_callback=None):
         if log_callback:
             log_callback(f"Aviso: Não foi possível tirar o print da tela: {str(e)}")
         return None
+
+
+def authenticate_network_share(target_path, username=None, password=None, log_callback=None):
+    """
+    Se no Windows e o destino for um caminho UNC (\\\\IP\\share ou \\\\IP\\c$\\path),
+    executa o comando 'net use' para autenticar no servidor remoto com usuário e senha.
+    """
+    if platform.system() != "Windows":
+        return True
+
+    if not target_path.startswith("\\\\") and not target_path.startswith("//"):
+        return True
+
+    parts = target_path.replace("/", "\\").split("\\")
+    if len(parts) < 3 or not parts[2]:
+        return True
+
+    server_host = parts[2]
+    share_name = parts[3] if len(parts) > 3 and parts[3] else ""
+
+    if username and username.strip():
+        user = username.strip()
+        pwd = password if password is not None else ""
+        unc_target = f"\\\\{server_host}\\{share_name}" if share_name else f"\\\\{server_host}"
+
+        if log_callback:
+            log_callback(f"Autenticando sessão SMB no servidor \\\\{server_host} com o usuário '{user}'...")
+
+        cmd = f'net use "{unc_target}" "{pwd}" /user:"{user}"'
+        import subprocess
+        proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=15)
+
+        if proc.returncode != 0:
+            # Caso dê erro de conexão (ex: conflito de conexões anteriores 1219), limpa sessões antigas e tenta de novo
+            subprocess.run(f'net use "{unc_target}" /delete /y', shell=True, capture_output=True, text=True, timeout=10)
+            subprocess.run(f'net use "\\\\{server_host}\\IPC$" /delete /y', shell=True, capture_output=True, text=True, timeout=10)
+
+            proc2 = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=15)
+            if proc2.returncode == 0:
+                if log_callback:
+                    log_callback(f"✓ Autenticação de rede estabelecida com sucesso para {unc_target}")
+                return True
+            else:
+                err_out = proc2.stderr.strip() or proc2.stdout.strip()
+                if log_callback:
+                    log_callback(f"Aviso de Autenticação ({unc_target}): {err_out}")
+                return False
+        else:
+            if log_callback:
+                log_callback(f"✓ Autenticação de rede estabelecida com sucesso para {unc_target}")
+            return True
+
+    return True

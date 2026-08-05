@@ -5,6 +5,10 @@ Importado em ui_nbs.py e ui_apollo.py para renderização nas abas 'Sobre'.
 """
 
 CHANGELOG_NBS = (
+    "=== Versão 1.4.0 ===\n"
+    "- Suporte a credenciais de rede SMB específicas (usuário e senha customizados ou usuário logado do Windows) no cadastro de servidores de distribuição.\n"
+    "- Implementada renderização inteligente sem oscilação (flicker-free) na atualização em tempo real das listas de servidores.\n"
+    "- Otimização do contêiner rolável da aba de Utilitários evitando que botões de ação sejam cortados ou espremidos verticalmente.\n\n"
     "=== Versão 1.3.0 ===\n"
     "- Ajustados os layouts das abas para se manterem estáticos com dimensionamento rígido de botões e contêineres, evitando deslocamentos ao atualizar as caixas de log.\n"
     "- Adicionada captura automática de tela (print da tela final salvo em .png na pasta 'screenshots/') ao concluir a execução do script de banco NBS e validador.\n"
@@ -90,6 +94,10 @@ CHANGELOG_NBS = (
 )
 
 CHANGELOG_APOLLO = (
+    "=== Versão 1.2.0 ===\n"
+    "- Suporte a credenciais de rede SMB específicas por servidor no utilitário de reinício remoto via PowerShell.\n"
+    "- Otimização da aba de Utilitários com contêiner rolável prevenindo o corte vertical de botões.\n"
+    "- Renderização de listas otimizada sem oscilações visuais.\n\n"
     "=== Versão 1.1.1 ===\n"
     "- Ajustados os layouts das abas do sistema Apollo para se manterem estáticos com dimensões fixas de botões e caixas de log.\n"
     "- Adicionado novo atalho na aba Utilitários para abrir o Agendador de Tarefas do Windows (taskschd.msc).\n"

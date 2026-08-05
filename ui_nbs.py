@@ -1341,7 +1341,7 @@ class NBSMixin:
         details_text = (
             "Desenvolvedor: Robson Santos\n"
             "Contato: robsonshk@gmail.com\n"
-            "Versão do Programa: 1.3.0\n"
+            "Versão do Programa: 1.4.0\n"
             "Finalidade: Facilitar a automação e controle do processo de atualizações de sistemas NBS."
         )
         ctk.CTkLabel(info_frame, text=details_text, justify="left", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")
@@ -1988,30 +1988,115 @@ class NBSMixin:
 
     # ----------------- DISTRIBUTION & SERVERS LIST UTILS -----------------
 
+    def _get_server_key_and_info(self, server_entry):
+        if isinstance(server_entry, dict):
+            ip = server_entry.get("ip", "")
+            user = server_entry.get("net_user", "")
+            password = server_entry.get("net_pass", "")
+            return ip, user, password
+        return str(server_entry), "", ""
+
     def refresh_servers_list_ui(self):
-        """Re-draws the list of servers in Tab 3 with Remove buttons next to them."""
-        for widget in self.servers_scroll_frame.winfo_children():
-            widget.destroy()
+        """Re-draws the list of servers in Tab 3 with Remove & Credentials buttons without flickering."""
+        if not hasattr(self, "_server_row_widgets"):
+            self._server_row_widgets = {}
 
         servers = self.app_config.get("servers", [])
-        
+        current_keys = [self._get_server_key_and_info(s)[0] for s in servers if self._get_server_key_and_info(s)[0]]
+
+        # Remove widgets for servers deleted from config
+        existing = list(self._server_row_widgets.keys())
+        for key in existing:
+            if key not in current_keys:
+                if self._server_row_widgets[key]["row"].winfo_exists():
+                    self._server_row_widgets[key]["row"].destroy()
+                del self._server_row_widgets[key]
+
         if not servers:
+            for widget in self.servers_scroll_frame.winfo_children():
+                widget.destroy()
+            self._server_row_widgets.clear()
             lbl = ctk.CTkLabel(self.servers_scroll_frame, text="Nenhum servidor cadastrado.", font=ctk.CTkFont(slant="italic"))
             lbl.grid(row=0, column=0, padx=10, pady=10, sticky="w")
             return
 
-        for i, sv in enumerate(servers):
-            # Row container
-            row = ctk.CTkFrame(self.servers_scroll_frame, fg_color="transparent")
-            row.grid(row=i, column=0, padx=5, pady=2, sticky="ew")
-            row.grid_columnconfigure(0, weight=1)
-            
-            lbl = ctk.CTkLabel(row, text=sv, anchor="w")
-            lbl.grid(row=0, column=0, padx=5, pady=2, sticky="w")
-            
-            btn = ctk.CTkButton(row, text="Remover", width=60, fg_color="#c0392b", hover_color="#e74c3c", command=lambda s=sv: self.remove_server_from_list(s))
-            btn.grid(row=0, column=1, padx=5, pady=2)
+        for i, s in enumerate(servers):
+            ip, user, password = self._get_server_key_and_info(s)
+            if not ip:
+                continue
 
+            cred_str = f" 🔑 ({user})" if user else " 👤 (Logado)"
+            display_text = f"💻 {ip}{cred_str}"
+
+            if ip not in self._server_row_widgets:
+                row = ctk.CTkFrame(self.servers_scroll_frame, fg_color="transparent")
+                row.grid(row=i, column=0, padx=5, pady=2, sticky="ew")
+                row.grid_columnconfigure(0, weight=1)
+                
+                lbl = ctk.CTkLabel(row, text=display_text, anchor="w")
+                lbl.grid(row=0, column=0, padx=5, pady=2, sticky="w")
+
+                btn_cred = ctk.CTkButton(row, text="🔑 Credencial", width=80, height=28, fg_color="transparent", border_width=1, font=ctk.CTkFont(size=11), command=lambda s_ref=s: self.open_edit_server_credentials_popup(s_ref))
+                btn_cred.grid(row=0, column=1, padx=2, pady=2)
+                
+                btn = ctk.CTkButton(row, text="Remover", width=60, height=28, fg_color="#c0392b", hover_color="#e74c3c", command=lambda s_ref=s: self.remove_server_from_list(s_ref))
+                btn.grid(row=0, column=2, padx=5, pady=2)
+
+                self._server_row_widgets[ip] = {"row": row, "lbl": lbl}
+            else:
+                self._server_row_widgets[ip]["lbl"].configure(text=display_text)
+
+    def open_edit_server_credentials_popup(self, server_entry):
+        ip, curr_user, curr_pass = self._get_server_key_and_info(server_entry)
+
+        popup = ctk.CTkToplevel(self)
+        popup.title(f"Credenciais de Rede - {ip}")
+        popup.geometry("450x260")
+        popup.resizable(False, False)
+        popup.transient(self)
+        popup.grab_set()
+
+        ctk.CTkLabel(popup, text=f"🔑 Credenciais SMB para {ip}", font=ctk.CTkFont(size=15, weight="bold")).pack(pady=(15, 5), padx=20, anchor="w")
+        ctk.CTkLabel(popup, text="Especifique usuário e senha para este servidor.\nDeixe em branco para utilizar o Usuário Logado no Windows.", font=ctk.CTkFont(size=11), text_color="#aaaaaa", justify="left").pack(pady=(0, 10), padx=20, anchor="w")
+
+        frame_form = ctk.CTkFrame(popup, fg_color="transparent")
+        frame_form.pack(padx=20, fill="x")
+        frame_form.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(frame_form, text="Usuário:", font=ctk.CTkFont(size=12, weight="bold")).grid(row=0, column=0, padx=(0, 10), pady=6, sticky="w")
+        user_entry = ctk.CTkEntry(frame_form, placeholder_text="Ex: DOMINIO\\usuario ou admin")
+        user_entry.grid(row=0, column=1, pady=6, sticky="ew")
+        user_entry.insert(0, curr_user)
+
+        ctk.CTkLabel(frame_form, text="Senha:", font=ctk.CTkFont(size=12, weight="bold")).grid(row=1, column=0, padx=(0, 10), pady=6, sticky="w")
+        pass_entry = ctk.CTkEntry(frame_form, show="*", placeholder_text="Senha de rede")
+        pass_entry.grid(row=1, column=1, pady=6, sticky="ew")
+        pass_entry.insert(0, curr_pass)
+
+        def save_creds():
+            u = user_entry.get().strip()
+            p = pass_entry.get()
+
+            servers = self.app_config.get("servers", [])
+            for idx, item in enumerate(servers):
+                item_ip = item.get("ip", "") if isinstance(item, dict) else str(item)
+                if item_ip == ip:
+                    servers[idx] = {"ip": ip, "net_user": u, "net_pass": p}
+                    break
+
+            self.app_config["servers"] = servers
+            self.save_ui_to_config()
+            self.refresh_servers_list_ui()
+            popup.destroy()
+
+        btn_frame = ctk.CTkFrame(popup, fg_color="transparent")
+        btn_frame.pack(pady=15, padx=20, fill="x")
+
+        btn_save = ctk.CTkButton(btn_frame, text="Salvar Credenciais", font=ctk.CTkFont(size=12, weight="bold"), fg_color="#2fa572", hover_color="#238257", command=save_creds)
+        btn_save.pack(side="right", padx=(5, 0))
+
+        btn_cancel = ctk.CTkButton(btn_frame, text="Cancelar", fg_color="transparent", border_width=1, command=popup.destroy)
+        btn_cancel.pack(side="right", padx=(0, 5))
 
     def add_server_to_list(self):
         val = self.server_entry.get().strip()
@@ -2020,8 +2105,9 @@ class NBSMixin:
 
         # Ensure UNC formats or IP strings
         servers = self.app_config.get("servers", [])
-        if val not in servers:
-            servers.append(val)
+        existing_ips = [s.get("ip", "") if isinstance(s, dict) else str(s) for s in servers]
+        if val not in existing_ips:
+            servers.append({"ip": val, "net_user": "", "net_pass": ""})
             self.app_config["servers"] = servers
             self.save_ui_to_config()
             self.refresh_servers_list_ui()
@@ -2029,15 +2115,12 @@ class NBSMixin:
         else:
             messagebox.showwarning("Aviso", "Este servidor já está cadastrado.")
 
-
     def remove_server_from_list(self, server_value):
         servers = self.app_config.get("servers", [])
-        if server_value in servers:
-            servers.remove(server_value)
-            self.app_config["servers"] = servers
-            self.save_ui_to_config()
-            self.refresh_servers_list_ui()
-
+        val_ip = server_value.get("ip", "") if isinstance(server_value, dict) else str(server_value)
+        self.app_config["servers"] = [s for s in servers if (s.get("ip", "") if isinstance(s, dict) else str(s)) != val_ip]
+        self.save_ui_to_config()
+        self.refresh_servers_list_ui()
 
     def start_distribution_process(self):
         self.save_ui_to_config()
@@ -2072,24 +2155,23 @@ class NBSMixin:
 
         self.dist_log_label.configure(text="Iniciando cópia das atualizações...")
 
-        # Setup destinations dictionary: {name_to_display: actual_path}
+        # Setup destinations dictionary: {name_to_display: {"path": actual_path, "user": ..., "pass": ...}}
         destinations = {}
         
         if copy_local:
             local_nbs = c["nbs_path_win"] if self.os_type == "Windows" else c["nbs_path_linux"]
-            destinations["Local (C:\\NBS)"] = os.path.normpath(local_nbs)
+            destinations["Local (C:\\NBS)"] = {"path": os.path.normpath(local_nbs), "user": "", "pass": ""}
             
         if copy_servers and servers:
             for s in servers:
-                # If s is just an IP, format it to UNC path, otherwise use UNC as-is
-                if not s.startswith("\\\\") and not s.startswith("//"):
-                    unc_path = f"\\\\{s}\\c$\\NBS"
+                ip, s_user, s_pass = self._get_server_key_and_info(s)
+                if not ip.startswith("\\\\") and not ip.startswith("//"):
+                    unc_path = f"\\\\{ip}\\c$\\NBS"
                 else:
-                    unc_path = s
-                destinations[s] = unc_path
+                    unc_path = ip
+                destinations[ip] = {"path": unc_path, "user": s_user, "pass": s_pass}
 
         threading.Thread(target=self._distribution_thread, args=(source_modules_dir, destinations), daemon=True).start()
-
 
     def _distribution_thread(self, source_dir, destinations):
         # Create UI labels for status tracking
@@ -2146,9 +2228,21 @@ class NBSMixin:
 
         overall_success = True
 
-        for name, dst_path in destinations.items():
+        for name, dest_info in destinations.items():
+            if isinstance(dest_info, dict):
+                dst_path = dest_info["path"]
+                user = dest_info.get("user", "")
+                password = dest_info.get("pass", "")
+            else:
+                dst_path = str(dest_info)
+                user = ""
+                password = ""
+
             log_text(f"Distribuindo para {name}...")
             update_lbl(name, "Copiando...", "orange")
+
+            if user and user.strip():
+                utils.authenticate_network_share(dst_path, user, password, log_callback=dist_log)
             
             # Run the actual utility copy function
             success = utils.distribute_to_destination(source_dir, dst_path, log_callback=dist_log)
