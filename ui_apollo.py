@@ -1074,10 +1074,6 @@ class ApolloMixin:
     def setup_tab_linx_utilities(self):
         tab = self.frame_linx_utilities
         tab.grid_columnconfigure(0, weight=1)
-        tab.grid_rowconfigure(2, weight=1)
-        tab.grid_rowconfigure(3, weight=1)
-        tab.grid_rowconfigure(4, weight=1)
-        tab.grid_rowconfigure(5, weight=1)
 
         # Title
         ctk.CTkLabel(tab, text="Utilitários e Manutenção Linx", font=ctk.CTkFont(size=20, weight="bold")).grid(row=0, column=0, padx=20, pady=(20, 5), sticky="w")
@@ -1085,7 +1081,7 @@ class ApolloMixin:
 
         # Cleanup card
         cleanup_frame = ctk.CTkFrame(tab)
-        cleanup_frame.grid(row=2, column=0, padx=20, pady=10, sticky="nsew")
+        cleanup_frame.grid(row=2, column=0, padx=20, pady=10, sticky="ew")
         cleanup_frame.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(cleanup_frame, text="Limpeza de Executáveis e DLLs do Linx", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
@@ -1104,7 +1100,7 @@ class ApolloMixin:
 
         # Extension cleanup card
         ext_frame = ctk.CTkFrame(tab)
-        ext_frame.grid(row=3, column=0, padx=20, pady=10, sticky="nsew")
+        ext_frame.grid(row=3, column=0, padx=20, pady=10, sticky="ew")
         ext_frame.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(ext_frame, text="Limpeza de Arquivos por Extensão (Linx)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
@@ -1121,7 +1117,7 @@ class ApolloMixin:
 
         # Remote Reboot via PowerShell Card
         linx_ps_frame = ctk.CTkFrame(tab)
-        linx_ps_frame.grid(row=4, column=0, padx=20, pady=10, sticky="nsew")
+        linx_ps_frame.grid(row=4, column=0, padx=20, pady=10, sticky="ew")
         linx_ps_frame.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(linx_ps_frame, text="Reinício de Servidores Remotos (PowerShell)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
@@ -1137,7 +1133,7 @@ class ApolloMixin:
 
         # Task Scheduler (Agendador de Tarefas do Windows) Card
         taskschd_frame = ctk.CTkFrame(tab)
-        taskschd_frame.grid(row=5, column=0, padx=20, pady=10, sticky="nsew")
+        taskschd_frame.grid(row=5, column=0, padx=20, pady=10, sticky="ew")
         taskschd_frame.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(taskschd_frame, text="Agendador de Tarefas do Windows (Task Scheduler)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")

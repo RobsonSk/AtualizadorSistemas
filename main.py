@@ -116,7 +116,7 @@ class AtualizadorApp(ctk.CTk, NBSMixin, ApolloMixin, CommonMixin):
         self.frame_download = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.frame_execution = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.frame_distribution = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        self.frame_utilities = ctk.CTkFrame(self.content_frame, fg_color="transparent")
+        self.frame_utilities = ctk.CTkScrollableFrame(self.content_frame, fg_color="transparent")
         self.frame_crmweb = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.frame_settings = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.frame_about = ctk.CTkFrame(self.content_frame, fg_color="transparent")
@@ -125,7 +125,7 @@ class AtualizadorApp(ctk.CTk, NBSMixin, ApolloMixin, CommonMixin):
         # Linx Navigation Frames
         self.frame_linx_download = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.frame_linx_update = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        self.frame_linx_utilities = ctk.CTkFrame(self.content_frame, fg_color="transparent")
+        self.frame_linx_utilities = ctk.CTkScrollableFrame(self.content_frame, fg_color="transparent")
         self.frame_linx_settings = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.frame_linx_about = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.frame_linx_notes = ctk.CTkFrame(self.content_frame, fg_color="transparent")

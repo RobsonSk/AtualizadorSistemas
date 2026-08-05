@@ -11,7 +11,18 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo 2. Compilando com PyInstaller...
+echo 2. Fechando instancias antigas do executavel em execucao (se houver)...
+taskkill /f /im AtualizadorSistemas.exe >nul 2>&1
+
+echo.
+echo 3. Salvando backup do executavel anterior...
+if exist "dist\AtualizadorSistemas.exe" (
+    copy /y "dist\AtualizadorSistemas.exe" "dist\Old_AtualizadorSistemas.exe" >nul 2>&1
+    echo [INFO] Backup da versao anterior salvo em: dist\Old_AtualizadorSistemas.exe
+)
+
+echo.
+echo 4. Compilando com PyInstaller...
 echo [INFO] Coletando todos os pacotes e recursos do customtkinter...
 pyinstaller --noconsole --onefile --collect-all customtkinter --name="AtualizadorSistemas" main.py
 

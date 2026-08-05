@@ -296,9 +296,6 @@ class NBSMixin:
     def setup_tab_utilities(self):
         tab = self.frame_utilities
         tab.grid_columnconfigure(0, weight=1)
-        tab.grid_rowconfigure(2, weight=1)
-        tab.grid_rowconfigure(3, weight=1)
-        tab.grid_rowconfigure(4, weight=1)
 
         # Title
         ctk.CTkLabel(tab, text="Utilitários e Manutenção", font=ctk.CTkFont(size=20, weight="bold")).grid(row=0, column=0, padx=20, pady=(20, 5), sticky="w")
@@ -306,7 +303,7 @@ class NBSMixin:
 
         # Cleanup card
         cleanup_frame = ctk.CTkFrame(tab)
-        cleanup_frame.grid(row=2, column=0, padx=20, pady=10, sticky="nsew")
+        cleanup_frame.grid(row=2, column=0, padx=20, pady=10, sticky="ew")
         cleanup_frame.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(cleanup_frame, text="Limpeza de Executáveis da Pasta NBS", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
@@ -323,7 +320,7 @@ class NBSMixin:
 
         # Extension cleanup card
         ext_frame = ctk.CTkFrame(tab)
-        ext_frame.grid(row=3, column=0, padx=20, pady=10, sticky="nsew")
+        ext_frame.grid(row=3, column=0, padx=20, pady=10, sticky="ew")
         ext_frame.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(ext_frame, text="Limpeza de Arquivos por Extensão (NBS)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
@@ -340,7 +337,7 @@ class NBSMixin:
 
         # Remote Reboot via PowerShell Card
         ps_frame = ctk.CTkFrame(tab)
-        ps_frame.grid(row=4, column=0, padx=20, pady=10, sticky="nsew")
+        ps_frame.grid(row=4, column=0, padx=20, pady=10, sticky="ew")
         ps_frame.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(ps_frame, text="Reinício de Servidores Remotos (PowerShell)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
