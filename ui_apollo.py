@@ -36,7 +36,7 @@ class ApolloMixin:
         details_text = (
             "Desenvolvedor: Robson Santos\n"
             "Contato: robsonshk@gmail.com\n"
-            "Versão do Programa: 1.0.9\n"
+            "Versão do Programa: 1.1.1\n"
             "Finalidade: Facilitar o download, descompactação, aplicação de atualizações e limpeza de arquivos do sistema Linx DMS."
         )
         ctk.CTkLabel(info_frame, text=details_text, justify="left", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")
@@ -1077,6 +1077,7 @@ class ApolloMixin:
         tab.grid_rowconfigure(2, weight=1)
         tab.grid_rowconfigure(3, weight=1)
         tab.grid_rowconfigure(4, weight=1)
+        tab.grid_rowconfigure(5, weight=1)
 
         # Title
         ctk.CTkLabel(tab, text="Utilitários e Manutenção Linx", font=ctk.CTkFont(size=20, weight="bold")).grid(row=0, column=0, padx=20, pady=(20, 5), sticky="w")
@@ -1133,6 +1134,35 @@ class ApolloMixin:
 
         self.linx_ps_reboot_btn = ctk.CTkButton(linx_ps_frame, text="Reiniciar Servidor Linx (PowerShell)", font=ctk.CTkFont(size=13, weight="bold"), height=35, command=lambda: self.open_powershell_restart_popup("linx"))
         self.linx_ps_reboot_btn.grid(row=2, column=0, padx=15, pady=(0, 20), sticky="w")
+
+        # Task Scheduler (Agendador de Tarefas do Windows) Card
+        taskschd_frame = ctk.CTkFrame(tab)
+        taskschd_frame.grid(row=5, column=0, padx=20, pady=10, sticky="nsew")
+        taskschd_frame.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(taskschd_frame, text="Agendador de Tarefas do Windows (Task Scheduler)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
+        
+        taskschd_details = (
+            "Atalho para abrir a interface gráfica do Agendador de Tarefas do Windows (`taskschd.msc`).\n"
+            "Permite visualizar, criar, editar ou desativar tarefas agendadas no sistema."
+        )
+        ctk.CTkLabel(taskschd_frame, text=taskschd_details, justify="left", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")
+
+        self.taskschd_btn = ctk.CTkButton(taskschd_frame, text="Abrir Agendador de Tarefas (taskschd.msc)", font=ctk.CTkFont(size=13, weight="bold"), height=35, fg_color="#16a085", hover_color="#1abc9c", command=self.open_task_scheduler)
+        self.taskschd_btn.grid(row=2, column=0, padx=15, pady=(0, 20), sticky="w")
+
+
+    def open_task_scheduler(self):
+        """Abre o Agendador de Tarefas do Windows (taskschd.msc)."""
+        if platform.system() != "Windows":
+            messagebox.showinfo("Informação", "O Agendador de Tarefas (taskschd.msc) é um recurso exclusivo do sistema operacional Windows.")
+            return
+
+        try:
+            import subprocess
+            subprocess.Popen("taskschd.msc", shell=True)
+        except Exception as e:
+            messagebox.showerror("Erro ao abrir", f"Não foi possível iniciar o Agendador de Tarefas (taskschd.msc):\n{str(e)}")
 
 
 

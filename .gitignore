@@ -22,6 +22,9 @@ Apollo_Atualiza/
 3Camadas_Atualiza/
 scratch/
 
+# Standalone distribution tool (ignored for git)
+distribuidor_rede/
+
 # IDE files
 .idea/
 .vscode/

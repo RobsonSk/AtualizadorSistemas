@@ -454,18 +454,51 @@ def download_http_file(url, local_filepath, progress_callback=None, check_pause_
         raise e
 
 
+def clean_server_address(target):
+    """
+    Remove barras iniciais e caminhos de pastas UNC (ex: '\\\\192.168.1.100\\c$\\NBS' -> '192.168.1.100').
+    Retorna apenas o IP ou Hostname limpo.
+    """
+    if not target or not isinstance(target, str):
+        return ""
+    val = target.strip()
+    val = val.lstrip("\\/")
+    val = re.split(r'[\\/]', val)[0]
+    return val.strip()
+
+
+def ping_host(host_or_ip, timeout_sec=2):
+    """
+    Realiza um teste de ICMP PING para o IP ou Hostname.
+    Retorna True se o servidor responder, False caso contrário.
+    """
+    clean_target = clean_server_address(host_or_ip)
+    if not clean_target:
+        return False
+    try:
+        import subprocess
+        if platform.system() == "Windows":
+            cmd = ["ping", "-n", "1", "-w", str(int(timeout_sec * 1000)), clean_target]
+            res = subprocess.run(cmd, capture_output=True, text=True, creationflags=0x08000000)
+        else:
+            cmd = ["ping", "-c", "1", "-W", str(int(timeout_sec)), clean_target]
+            res = subprocess.run(cmd, capture_output=True, text=True)
+        return res.returncode == 0
+    except Exception:
+        return False
+
+
 def restart_remote_server_powershell(server_name_or_ip, force=True, user=None, password=None, log_callback=None):
     """
-    Executa um comando PowerShell para reiniciar um servidor remoto/adjacente.
+    Executa o comando PowerShell Restart-Computer no servidor remoto especificado.
     Suporta a flag -Force para desconectar sessões ativas de usuários e credenciais opcionais.
     Em sistemas não-Windows (Linux), simula a ação.
     """
-    if not server_name_or_ip or not server_name_or_ip.strip():
+    server = clean_server_address(server_name_or_ip)
+    if not server:
         if log_callback:
-            log_callback("Erro: Nenhum servidor ou IP especificado para reinício.")
+            log_callback("Erro: Nenhum servidor ou IP válido especificado para reinício.")
         return False
-
-    server = server_name_or_ip.strip()
 
     if log_callback:
         log_callback(f"Iniciando procedimento de reinício no servidor: {server}")
@@ -535,4 +568,30 @@ def restart_remote_server_powershell(server_name_or_ip, force=True, user=None, p
         return False
 
 
-
+def take_screenshot(filename_prefix="nbs_update_completion", log_callback=None):
+    """
+    Captura um print da tela (desktop/aplicativo) e salva como imagem PNG
+    na pasta 'screenshots' com timestamp no nome do arquivo.
+    Retorna o caminho completo do arquivo salvo se bem-sucedido, ou None se falhar.
+    """
+    try:
+        from PIL import ImageGrab
+        
+        screenshots_dir = os.path.join(os.getcwd(), "screenshots")
+        os.makedirs(screenshots_dir, exist_ok=True)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{filename_prefix}_{timestamp}.png"
+        filepath = os.path.join(screenshots_dir, filename)
+        
+        screenshot = ImageGrab.grab()
+        screenshot.save(filepath, "PNG")
+        
+        if log_callback:
+            log_callback(f"Print de tela salvo com sucesso em: {filepath}")
+            
+        return filepath
+    except Exception as e:
+        if log_callback:
+            log_callback(f"Aviso: Não foi possível tirar o print da tela: {str(e)}")
+        return None

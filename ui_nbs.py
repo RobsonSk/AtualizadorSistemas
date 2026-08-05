@@ -120,10 +120,13 @@ class NBSMixin:
         self.dl_bottom_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=(5, 10), sticky="ew")
         self.dl_bottom_frame.grid_columnconfigure(0, weight=4)
         self.dl_bottom_frame.grid_columnconfigure(1, weight=1)
+        self.dl_bottom_frame.grid_rowconfigure(0, weight=1)
+        self.dl_bottom_frame.grid_rowconfigure(1, weight=0)
+        self.dl_bottom_frame.grid_rowconfigure(2, weight=0)
 
         # Log & Console
         self.console_log = ctk.CTkTextbox(self.dl_bottom_frame, height=140, font=ctk.CTkFont(family="monospace", size=11))
-        self.console_log.grid(row=0, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
+        self.console_log.grid(row=0, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")
 
         self.dl_status_label = ctk.CTkLabel(self.dl_bottom_frame, text="Pronto para iniciar.", anchor="w")
         self.dl_status_label.grid(row=1, column=0, padx=10, pady=2, sticky="w")
@@ -149,6 +152,13 @@ class NBSMixin:
         exec_frame = ctk.CTkFrame(tab)
         exec_frame.grid(row=0, column=0, padx=15, pady=15, sticky="nsew")
         exec_frame.grid_columnconfigure(0, weight=1)
+        exec_frame.grid_rowconfigure(0, weight=0)
+        exec_frame.grid_rowconfigure(1, weight=0)
+        exec_frame.grid_rowconfigure(2, weight=0)
+        exec_frame.grid_rowconfigure(3, weight=0)
+        exec_frame.grid_rowconfigure(4, weight=0)
+        exec_frame.grid_rowconfigure(5, weight=0)
+        exec_frame.grid_rowconfigure(6, weight=1)
 
         ctk.CTkLabel(exec_frame, text="Executar Script de Banco de Dados", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, padx=20, pady=(15, 5), sticky="w")
         ctk.CTkLabel(exec_frame, text="Selecione o arquivo de script NBS Scripts baixado para rodar as atualizações no banco.", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=20, pady=(0, 15), sticky="w")
@@ -206,7 +216,7 @@ class NBSMixin:
         self.exec_status_label.grid(row=5, column=0, padx=20, pady=5, sticky="w")
 
         self.exec_log_box = ctk.CTkTextbox(exec_frame, height=140, font=ctk.CTkFont(family="monospace", size=11))
-        self.exec_log_box.grid(row=6, column=0, padx=20, pady=(5, 15), sticky="ew")
+        self.exec_log_box.grid(row=6, column=0, padx=20, pady=(5, 15), sticky="nsew")
 
     # ----------------- TAB 3: DISTRIBUIÇÃO -----------------
 
@@ -1334,7 +1344,7 @@ class NBSMixin:
         details_text = (
             "Desenvolvedor: Robson Santos\n"
             "Contato: robsonshk@gmail.com\n"
-            "Versão do Programa: 1.2.9\n"
+            "Versão do Programa: 1.3.0\n"
             "Finalidade: Facilitar a automação e controle do processo de atualizações de sistemas NBS."
         )
         ctk.CTkLabel(info_frame, text=details_text, justify="left", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")
@@ -1916,7 +1926,12 @@ class NBSMixin:
             time.sleep(2)
             log("[Linux SIMULADO] Validador NBSScriptsRun.exe finalizado.")
             status("Concluído.")
-            self.after(0, lambda: messagebox.showinfo("Sucesso", "Script de banco e validador NBSScriptsRun.exe executados e finalizados com sucesso!"))
+            
+            # Tirar print de tela da finalização
+            shot_path = utils.take_screenshot(filename_prefix="nbs_update_completion", log_callback=log)
+            shot_info = f"\n\nPrint salvo em: {shot_path}" if shot_path else ""
+            
+            self.after(0, lambda: messagebox.showinfo("Sucesso", f"Script de banco e validador NBSScriptsRun.exe executados com sucesso!{shot_info}"))
             self.after(0, lambda: self.run_script_btn.configure(state="normal"))
             return
 
@@ -1952,14 +1967,24 @@ class NBSMixin:
                 time.sleep(2)
             log("Validador NBSScriptsRun.exe finalizado com sucesso.")
             status("Concluído.")
-            self.after(0, lambda: messagebox.showinfo("Sucesso", "Script de banco e validador NBSScriptsRun.exe executados e finalizados com sucesso!"))
+            
+            # Tirar print de tela da finalização da atualização do NBS
+            shot_path = utils.take_screenshot(filename_prefix="nbs_update_completion", log_callback=log)
+            shot_info = f"\n\nPrint de tela salvo em:\n{shot_path}" if shot_path else ""
+            
+            self.after(0, lambda: messagebox.showinfo("Sucesso", f"Script de banco e validador NBSScriptsRun.exe executados e finalizados com sucesso!{shot_info}"))
         else:
             log("Alerta: O validador NBSScriptsRun.exe não foi iniciado automaticamente.")
             status("Concluído (Manual).")
+            
+            # Tirar print de tela da finalização da atualização do NBS
+            shot_path = utils.take_screenshot(filename_prefix="nbs_update_completion", log_callback=log)
+            shot_info = f"\n\nPrint de tela salvo em:\n{shot_path}" if shot_path else ""
+            
             self.after(0, lambda: messagebox.showinfo(
                 "Sucesso", 
-                "Script principal executado com sucesso!\n\n"
-                "Aviso: Favor proceder com a atualização Via NBS Scripts Run manualmente se necessário."
+                f"Script principal executado com sucesso!\n\n"
+                f"Aviso: Favor proceder com a atualização Via NBS Scripts Run manualmente se necessário.{shot_info}"
             ))
             
         self.after(0, lambda: self.run_script_btn.configure(state="normal"))

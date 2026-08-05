@@ -5,6 +5,10 @@ Importado em ui_nbs.py e ui_apollo.py para renderização nas abas 'Sobre'.
 """
 
 CHANGELOG_NBS = (
+    "=== Versão 1.3.0 ===\n"
+    "- Ajustados os layouts das abas para se manterem estáticos com dimensionamento rígido de botões e contêineres, evitando deslocamentos ao atualizar as caixas de log.\n"
+    "- Adicionada captura automática de tela (print da tela final salvo em .png na pasta 'screenshots/') ao concluir a execução do script de banco NBS e validador.\n"
+    "- Refatorado o utilitário de Reinício Remoto nos Utilitários: higienização automática de IPs (removendo caminhos UNC como \\\\IP\\c$\\NBS), suporte ao gerenciamento de lista de IPs salvos e monitoramento em tempo real do ciclo de reinício via PING (com badges visuais ONLINE/OFFLINE).\n\n"
     "=== Versão 1.2.9 ===\n"
     "- Adicionado painel de monitoramento e controle (iniciar/parar) do serviço do Payara (nome padrão 'domain1') na aba de Atualização CRMWeb, permitindo configurar nomes de serviço customizados.\n\n"
     "=== Versão 1.2.8  ===\n"
@@ -86,6 +90,10 @@ CHANGELOG_NBS = (
 )
 
 CHANGELOG_APOLLO = (
+    "=== Versão 1.1.1 ===\n"
+    "- Ajustados os layouts das abas do sistema Apollo para se manterem estáticos com dimensões fixas de botões e caixas de log.\n"
+    "- Adicionado novo atalho na aba Utilitários para abrir o Agendador de Tarefas do Windows (taskschd.msc).\n"
+    "- Atualizado o utilitário de reinício remoto com sanitização de IP, gerenciamento de lista de servidores salvos e monitoramento de status via PING.\n\n"
     "=== Versão 1.1.0 ===\n"
     "- Adicionada opção de backup dos executáveis (.exe) e bibliotecas (.dll) da pasta C:\\Apollo\\atualiza antes da descompactação.\n"
     "- Adicionada flag na seleção de pacotes para ativar/desativar o backup do Apollo.\n"

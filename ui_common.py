@@ -309,19 +309,19 @@ class CommonMixin:
 
 
     def open_powershell_restart_popup(self, system_name="nbs"):
-        """Abre uma janela pop-up modal para configurar e enviar o comando de reinício remoto via PowerShell."""
+        """Abre uma janela pop-up modal para configurar, enviar o comando de reinício remoto e monitorar via PING."""
         c = self.app_config
 
         popup = ctk.CTkToplevel(self)
         sys_title = "NBS" if system_name.lower() == "nbs" else "Linx"
         popup.title(f"Reinício de Servidores via PowerShell - {sys_title}")
-        popup.geometry("640x560")
-        popup.minsize(540, 500)
+        popup.geometry("680x620")
+        popup.minsize(580, 540)
         popup.grab_set()
 
         # Title
         ctk.CTkLabel(popup, text=f"Reinício Remoto de Servidor ({sys_title})", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, padx=20, pady=(15, 2), sticky="w")
-        ctk.CTkLabel(popup, text="Disparar o comando PowerShell Restart-Computer -Force para um servidor remoto.", font=ctk.CTkFont(size=11)).grid(row=1, column=0, padx=20, pady=(0, 10), sticky="w")
+        ctk.CTkLabel(popup, text="Envio de comando PowerShell Restart-Computer e monitoramento de status por PING.", font=ctk.CTkFont(size=11)).grid(row=1, column=0, padx=20, pady=(0, 10), sticky="w")
 
         popup.grid_columnconfigure(0, weight=1)
 
@@ -330,35 +330,113 @@ class CommonMixin:
         form_frame.grid(row=2, column=0, padx=20, pady=5, sticky="ew")
         form_frame.grid_columnconfigure(1, weight=1)
 
+        # Helper to get clean list of saved IP/servers
+        def get_saved_servers_list():
+            raw_list = c.get("reboot_servers", []) or c.get("servers", [])
+            cleaned = []
+            for item in raw_list:
+                cleaned_item = utils.clean_server_address(item)
+                if cleaned_item and cleaned_item not in cleaned:
+                    cleaned.append(cleaned_item)
+            if not cleaned:
+                cleaned = ["127.0.0.1"]
+            return cleaned
+
+        servers_options = get_saved_servers_list()
+
         # 1. Server Selection / Custom IP
-        ctk.CTkLabel(form_frame, text="Servidor Destino (IP/Host):", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=15, pady=(12, 5), sticky="w")
+        ctk.CTkLabel(form_frame, text="IP / Host Salvo:", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=15, pady=(12, 5), sticky="w")
 
-        servers_list = c.get("servers", [])
-        server_options = [s.strip() for s in servers_list if s and s.strip()]
-        if "Outro Servidor / IP..." not in server_options:
-            server_options.append("Outro Servidor / IP...")
+        server_var = ctk.StringVar(value=servers_options[0] if servers_options else "")
+        server_dropdown = ctk.CTkOptionMenu(form_frame, variable=server_var, values=servers_options)
+        server_dropdown.grid(row=0, column=1, padx=(15, 5), pady=(12, 5), sticky="ew")
 
-        server_var = ctk.StringVar(value=server_options[0])
+        # IP Management buttons (+ / -)
+        btn_manage_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
+        btn_manage_frame.grid(row=0, column=2, padx=(0, 15), pady=(12, 5), sticky="e")
+
+        def add_ip_action():
+            new_ip = custom_server_entry.get().strip()
+            new_ip_clean = utils.clean_server_address(new_ip)
+            if not new_ip_clean:
+                messagebox.showwarning("Aviso", "Informe um IP ou Hostname válido para salvar.", parent=popup)
+                return
+            
+            saved = c.get("reboot_servers", [])
+            if new_ip_clean not in [utils.clean_server_address(x) for x in saved]:
+                saved.append(new_ip_clean)
+                c["reboot_servers"] = saved
+                config.save_config(c)
+                
+            new_opts = get_saved_servers_list()
+            server_dropdown.configure(values=new_opts)
+            server_var.set(new_ip_clean)
+            append_log(f"IP/Host '{new_ip_clean}' adicionado à lista de servidores salvos.")
+
+        def remove_ip_action():
+            curr = utils.clean_server_address(server_var.get())
+            if not curr:
+                return
+            saved = c.get("reboot_servers", [])
+            saved = [x for x in saved if utils.clean_server_address(x) != curr]
+            c["reboot_servers"] = saved
+            config.save_config(c)
+            
+            new_opts = get_saved_servers_list()
+            server_dropdown.configure(values=new_opts)
+            server_var.set(new_opts[0] if new_opts else "")
+            append_log(f"IP/Host '{curr}' removido da lista de servidores salvos.")
+
+        ctk.CTkButton(btn_manage_frame, text="+ Salvar", width=65, font=ctk.CTkFont(size=11, weight="bold"), command=add_ip_action).grid(row=0, column=0, padx=2)
+        ctk.CTkButton(btn_manage_frame, text="- Remover", width=70, font=ctk.CTkFont(size=11, weight="bold"), fg_color="#c0392b", hover_color="#e74c3c", command=remove_ip_action).grid(row=0, column=1, padx=2)
+
+        # 2. Clean IP Entry & PING test button
+        ctk.CTkLabel(form_frame, text="IP / Host Limpo:", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=5, sticky="w")
         
-        server_dropdown = ctk.CTkOptionMenu(form_frame, variable=server_var, values=server_options)
-        server_dropdown.grid(row=0, column=1, padx=15, pady=(12, 5), sticky="ew")
+        entry_ping_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
+        entry_ping_frame.grid(row=1, column=1, columnspan=2, padx=15, pady=5, sticky="ew")
+        entry_ping_frame.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(form_frame, text="IP ou Nome Personalizado:", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=5, sticky="w")
-        custom_server_entry = ctk.CTkEntry(form_frame, placeholder_text="Ex: 192.168.1.100 ou SERVIDOR-02")
-        custom_server_entry.grid(row=1, column=1, padx=15, pady=5, sticky="ew")
+        custom_server_entry = ctk.CTkEntry(entry_ping_frame, placeholder_text="Ex: 192.168.1.100 ou SERVIDOR-02")
+        custom_server_entry.grid(row=0, column=0, sticky="ew", padx=(0, 5))
 
-        def update_entry_state(*args):
-            val = server_var.get()
-            if val == "Outro Servidor / IP...":
-                custom_server_entry.delete(0, "end")
-            else:
-                custom_server_entry.delete(0, "end")
-                custom_server_entry.insert(0, val)
+        lbl_ping_status = ctk.CTkLabel(entry_ping_frame, text="DESCONHECIDO", font=ctk.CTkFont(size=10, weight="bold"), fg_color="#7f8c8d", text_color="white", corner_radius=6, height=24, width=100)
+        lbl_ping_status.grid(row=0, column=1, padx=5)
 
-        server_var.trace_add("write", update_entry_state)
-        update_entry_state()
+        def update_entry_from_dropdown(*args):
+            raw_val = server_var.get()
+            clean_val = utils.clean_server_address(raw_val)
+            custom_server_entry.delete(0, "end")
+            if clean_val:
+                custom_server_entry.insert(0, clean_val)
 
-        # 2. Force Option Checkbox
+        server_var.trace_add("write", update_entry_from_dropdown)
+        update_entry_from_dropdown()
+
+        def test_ping_action():
+            target = utils.clean_server_address(custom_server_entry.get())
+            if not target:
+                messagebox.showwarning("Aviso", "Informe um IP ou Hostname válido para testar PING.", parent=popup)
+                return
+
+            lbl_ping_status.configure(text="TESTANDO...", fg_color="#e67e22")
+            append_log(f"Enviando PING para '{target}'...")
+
+            def do_ping():
+                is_up = utils.ping_host(target, timeout_sec=2)
+                if is_up:
+                    self.after(0, lambda: lbl_ping_status.configure(text="ONLINE", fg_color="#27ae60"))
+                    self.after(0, lambda: append_log(f"Resposta PING de '{target}': ONLINE (Sucesso)"))
+                else:
+                    self.after(0, lambda: lbl_ping_status.configure(text="OFFLINE", fg_color="#c0392b"))
+                    self.after(0, lambda: append_log(f"Resposta PING de '{target}': OFFLINE (Sem resposta)"))
+
+            threading.Thread(target=do_ping, daemon=True).start()
+
+        btn_test_ping = ctk.CTkButton(entry_ping_frame, text="Testar PING", width=85, font=ctk.CTkFont(size=11, weight="bold"), command=test_ping_action)
+        btn_test_ping.grid(row=0, column=2, padx=(5, 0))
+
+        # 3. Force Option Checkbox
         force_var = ctk.BooleanVar(value=True)
         force_chk = ctk.CTkCheckBox(
             form_frame, 
@@ -366,16 +444,16 @@ class CommonMixin:
             variable=force_var,
             font=ctk.CTkFont(weight="bold")
         )
-        force_chk.grid(row=2, column=0, columnspan=2, padx=15, pady=10, sticky="w")
+        force_chk.grid(row=2, column=0, columnspan=3, padx=15, pady=10, sticky="w")
 
-        # 3. Optional Credentials
+        # 4. Optional Credentials
         ctk.CTkLabel(form_frame, text="Usuário (Opcional):", font=ctk.CTkFont(size=12)).grid(row=3, column=0, padx=15, pady=5, sticky="w")
         user_entry = ctk.CTkEntry(form_frame, placeholder_text="Ex: DOMINIO\\Administrador")
-        user_entry.grid(row=3, column=1, padx=15, pady=5, sticky="ew")
+        user_entry.grid(row=3, column=1, columnspan=2, padx=15, pady=5, sticky="ew")
 
         ctk.CTkLabel(form_frame, text="Senha (Opcional):", font=ctk.CTkFont(size=12)).grid(row=4, column=0, padx=15, pady=(5, 12), sticky="w")
         pass_entry = ctk.CTkEntry(form_frame, placeholder_text="Senha do Usuário", show="*")
-        pass_entry.grid(row=4, column=1, padx=15, pady=(5, 12), sticky="ew")
+        pass_entry.grid(row=4, column=1, columnspan=2, padx=15, pady=(5, 12), sticky="ew")
 
         # Log Textbox inside popup
         log_box = ctk.CTkTextbox(popup, height=130)
@@ -387,11 +465,13 @@ class CommonMixin:
             log_box.insert("end", f"[{timestamp}] {msg}\n")
             log_box.see("end")
 
-        # Execute Action
+        # Execute Action & Ping Reboot Monitor
         def execute_reboot():
-            target_host = custom_server_entry.get().strip()
-            if not target_host or target_host == "Outro Servidor / IP...":
-                messagebox.showwarning("Aviso", "Por favor, informe o IP ou nome do servidor de destino.", parent=popup)
+            raw_target = custom_server_entry.get().strip()
+            target_host = utils.clean_server_address(raw_target)
+            
+            if not target_host:
+                messagebox.showwarning("Aviso", "Por favor, informe o IP ou nome de servidor limpo de destino.", parent=popup)
                 return
 
             force = force_var.get()
@@ -400,15 +480,16 @@ class CommonMixin:
 
             confirm_msg = (
                 f"Tem certeza que deseja reiniciar o servidor '{target_host}'?\n\n"
-                f"Atenção: Se a opção -Force estiver marcada, TODOS os usuários conectados no servidor "
-                f"serão desconectados imediatamente e tarefas não salvas poderão ser perdidas."
+                f"IP Sanitizado: {target_host}\n"
+                f"Atenção: Se a opção -Force estiver marcada, TODOS os usuários conectados serão desconectados."
             )
             
             if not messagebox.askyesno("Confirmar Reinício Remoto", confirm_msg, parent=popup, icon="warning"):
                 return
 
-            append_log(f"Iniciando solicitação de reinício para '{target_host}'...")
+            append_log(f"Iniciando procedimento de reinício para '{target_host}'...")
             btn_run.configure(state="disabled", text="Enviando comando...")
+            lbl_ping_status.configure(text="ENVIANDO...", fg_color="#e67e22")
 
             def run_thread():
                 try:
@@ -419,15 +500,50 @@ class CommonMixin:
                         password=password,
                         log_callback=append_log
                     )
-                    if success:
-                        messagebox.showinfo("Sucesso", f"Comando de reinício enviado com sucesso para {target_host}.", parent=popup)
+                    if not success:
+                        self.after(0, lambda: lbl_ping_status.configure(text="FALHA", fg_color="#c0392b"))
+                        self.after(0, lambda: messagebox.showerror("Erro", f"Não foi possível enviar o comando de reinício para {target_host}.", parent=popup))
+                        return
+
+                    self.after(0, lambda: append_log(f"Comando aceito. Monitorando reinício por PING no host '{target_host}'..."))
+                    self.after(0, lambda: lbl_ping_status.configure(text="REINICIANDO...", fg_color="#d35400"))
+                    
+                    # Phase 1: Wait for host to go OFFLINE (confirm shutdown/reboot started)
+                    was_offline = False
+                    for _ in range(25): # Wait up to ~50s for shutdown
+                        time.sleep(2)
+                        if not utils.ping_host(target_host, timeout_sec=1):
+                            was_offline = True
+                            self.after(0, lambda: append_log(f"Servidor '{target_host}' ficou OFFLINE (Reinício confirmado em andamento)."))
+                            self.after(0, lambda: lbl_ping_status.configure(text="OFFLINE (REBOOT)", fg_color="#c0392b"))
+                            break
+
+                    if not was_offline:
+                        self.after(0, lambda: append_log(f"Aviso: Servidor '{target_host}' não aparenta ter desligado via PING (ou reiniciou extremamente rápido)."))
+
+                    # Phase 2: Wait for host to return ONLINE (confirm boot up)
+                    self.after(0, lambda: append_log(f"Aguardando o servidor '{target_host}' retornar ONLINE..."))
+                    is_online = False
+                    for _ in range(30): # Wait up to ~90s for boot
+                        time.sleep(3)
+                        if utils.ping_host(target_host, timeout_sec=2):
+                            is_online = True
+                            break
+
+                    if is_online:
+                        self.after(0, lambda: lbl_ping_status.configure(text="REINICIADO (ONLINE)", fg_color="#27ae60"))
+                        self.after(0, lambda: append_log(f"SUCESSO! Servidor '{target_host}' respondeu ao PING e está ONLINE novamente."))
+                        self.after(0, lambda: messagebox.showinfo("Reinício Confirmado", f"O servidor '{target_host}' foi reiniciado e já está ONLINE novamente!", parent=popup))
                     else:
-                        messagebox.showerror("Erro", f"Não foi possível reiniciar {target_host}. Verifique os logs para mais detalhes.", parent=popup)
+                        self.after(0, lambda: lbl_ping_status.configure(text="AGUARDANDO PING...", fg_color="#e67e22"))
+                        self.after(0, lambda: append_log(f"Aviso: O comando foi enviado, mas o servidor '{target_host}' ainda não respondeu ao PING após o tempo limite."))
+                        self.after(0, lambda: messagebox.showinfo("Comando Enviado", f"Comando enviado com sucesso para '{target_host}'.\nO servidor ainda pode estar finalizando a inicialização.", parent=popup))
+
                 except Exception as ex:
-                    append_log(f"Erro inesperado: {str(ex)}")
-                    messagebox.showerror("Erro", f"Exceção durante a execução: {str(ex)}", parent=popup)
+                    self.after(0, lambda: append_log(f"Erro inesperado: {str(ex)}"))
+                    self.after(0, lambda: messagebox.showerror("Erro", f"Exceção durante a execução: {str(ex)}", parent=popup))
                 finally:
-                    btn_run.configure(state="normal", text="Enviar Comando de Reinício (PowerShell)")
+                    self.after(0, lambda: btn_run.configure(state="normal", text="Enviar Comando de Reinício (PowerShell)"))
 
             threading.Thread(target=run_thread, daemon=True).start()
 
