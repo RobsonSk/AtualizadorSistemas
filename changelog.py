@@ -5,6 +5,9 @@ Importado em ui_nbs.py e ui_apollo.py para renderização nas abas 'Sobre'.
 """
 
 CHANGELOG_NBS = (
+    "=== Versão 1.5.0 ===\n"
+    "- Adicionada exibição da porcentagem (%) de progresso e velocidade de download em tempo real (MB/s ou KB/s) no painel de status do NBS.\n"
+    "- Configurados Tooltips flutuantes nas descrições das ferramentas da aba Utilitários do NBS.\n\n"
     "=== Versão 1.4.0 ===\n"
     "- Suporte a credenciais de rede SMB específicas (usuário e senha customizados ou usuário logado do Windows) no cadastro de servidores de distribuição.\n"
     "- Implementada renderização inteligente sem oscilação (flicker-free) na atualização em tempo real das listas de servidores.\n"
@@ -94,6 +97,11 @@ CHANGELOG_NBS = (
 )
 
 CHANGELOG_APOLLO = (
+    "=== Versão 1.3.0 ===\n"
+    "- Compactação automática (.zip) da pasta de backup do Apollo (EXE/DLL) e exclusão da pasta descompactada temporária.\n"
+    "- Exclusão automatizada do último backup zip anterior após a conclusão bem-sucedida da atualização e persistência do caminho no arquivo de configurações.\n"
+    "- Configurados Tooltips flutuantes nas descrições da aba Utilitários Linx mantendo a estrutura visual e tamanho original dos cartões.\n"
+    "- Adicionada exibição da porcentagem (%) de progresso e velocidade de download em tempo real (MB/s ou KB/s) no painel de status do Linx.\n\n"
     "=== Versão 1.2.0 ===\n"
     "- Suporte a credenciais de rede SMB específicas por servidor no utilitário de reinício remoto via PowerShell.\n"
     "- Otimização da aba de Utilitários com contêiner rolável prevenindo o corte vertical de botões.\n"

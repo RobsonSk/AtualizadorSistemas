@@ -68,7 +68,8 @@ DEFAULT_CONFIG = {
     "linx_url_integrador_template": "https://distribuicao.blob.core.windows.net/dms/DVI/LinxDMSIntegrador.zip",
     "crm_service_payara": "domain1",
     "nbs_notes": "",
-    "linx_notes": ""
+    "linx_notes": "",
+    "last_apollo_backup_zip": ""
 }
 
 def encrypt_data(data_str: str) -> str:

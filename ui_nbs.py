@@ -14,6 +14,7 @@ import config
 import ftp_client
 import utils
 from changelog import CHANGELOG_NBS
+from ui_common import CTkToolTip
 
 class NBSMixin:
     """Interface, abas e lógica de negócios específica do sistema NBS."""
@@ -306,50 +307,47 @@ class NBSMixin:
         cleanup_frame.grid(row=2, column=0, padx=20, pady=10, sticky="ew")
         cleanup_frame.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(cleanup_frame, text="Limpeza de Executáveis da Pasta NBS", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
+        ctk.CTkLabel(cleanup_frame, text="Limpeza de Executáveis da Pasta NBS", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 10), sticky="w")
         
         details_text = (
             "Esta ferramenta busca todos os arquivos executáveis (.exe) dentro da pasta local do NBS configurada.\n"
             "Permite selecionar de forma interativa a pasta, aplicar filtros Glob/Regex e marcar manualmente os arquivos a excluir.\n"
             "Útil para limpar executáveis temporários ou antigos e economizar espaço."
         )
-        ctk.CTkLabel(cleanup_frame, text=details_text, justify="left", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")
-
         self.cleanup_btn = ctk.CTkButton(cleanup_frame, text="Limpar Executáveis NBS", font=ctk.CTkFont(size=13, weight="bold"), height=35, command=self.open_nbs_cleanup_popup)
-        self.cleanup_btn.grid(row=2, column=0, padx=15, pady=(0, 20), sticky="w")
+        self.cleanup_btn.grid(row=1, column=0, padx=15, pady=(0, 20), sticky="w")
+        CTkToolTip(self.cleanup_btn, details_text)
 
         # Extension cleanup card
         ext_frame = ctk.CTkFrame(tab)
         ext_frame.grid(row=3, column=0, padx=20, pady=10, sticky="ew")
         ext_frame.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(ext_frame, text="Limpeza de Arquivos por Extensão (NBS)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
+        ctk.CTkLabel(ext_frame, text="Limpeza de Arquivos por Extensão (NBS)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 10), sticky="w")
         
         ext_details = (
             "Esta ferramenta permite pesquisar e excluir arquivos de qualquer extensão específica (ex: .log, .tmp, .zip)\n"
             "dentro das pastas do NBS ou outro diretório que você escolher.\n"
             "Você define a extensão a ser buscada, filtra os resultados e seleciona manualmente quais remover."
         )
-        ctk.CTkLabel(ext_frame, text=ext_details, justify="left", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")
-
         self.ext_cleanup_btn = ctk.CTkButton(ext_frame, text="Limpar por Extensão NBS", font=ctk.CTkFont(size=13, weight="bold"), height=35, command=lambda: self.open_extension_cleanup_popup("nbs"))
-        self.ext_cleanup_btn.grid(row=2, column=0, padx=15, pady=(0, 20), sticky="w")
+        self.ext_cleanup_btn.grid(row=1, column=0, padx=15, pady=(0, 20), sticky="w")
+        CTkToolTip(self.ext_cleanup_btn, ext_details)
 
         # Remote Reboot via PowerShell Card
         ps_frame = ctk.CTkFrame(tab)
         ps_frame.grid(row=4, column=0, padx=20, pady=10, sticky="ew")
         ps_frame.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(ps_frame, text="Reinício de Servidores Remotos (PowerShell)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
+        ctk.CTkLabel(ps_frame, text="Reinício de Servidores Remotos (PowerShell)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 10), sticky="w")
         
         ps_details = (
             "Esta ferramenta permite enviar o comando PowerShell (`Restart-Computer`) para reiniciar servidores adjacentes.\n"
             "Permite forçar o reinício (-Force) desconectando usuários ativos imediatamente e especificando credenciais se necessário."
         )
-        ctk.CTkLabel(ps_frame, text=ps_details, justify="left", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")
-
         self.ps_reboot_btn = ctk.CTkButton(ps_frame, text="Reiniciar Servidor Remoto (PowerShell)", font=ctk.CTkFont(size=13, weight="bold"), height=35, command=lambda: self.open_powershell_restart_popup("nbs"))
-        self.ps_reboot_btn.grid(row=2, column=0, padx=15, pady=(0, 20), sticky="w")
+        self.ps_reboot_btn.grid(row=1, column=0, padx=15, pady=(0, 20), sticky="w")
+        CTkToolTip(self.ps_reboot_btn, ps_details)
 
 
 
@@ -1528,7 +1526,37 @@ class NBSMixin:
                         return
 
             self.current_downloading_file = l_file
-            client_inst.download_file(r_file, l_file, progress_callback, size)
+            dl_start_time = time.time()
+            last_u_time = 0
+
+            def file_progress_cb(dl_bytes, total_bytes):
+                nonlocal last_u_time
+                check_pause_and_cancel()
+                now = time.time()
+                if now - last_u_time >= 0.1 or (total_bytes > 0 and dl_bytes >= total_bytes):
+                    last_u_time = now
+                    elapsed = max(now - dl_start_time, 0.001)
+                    speed = dl_bytes / elapsed
+
+                    if speed >= 1024 * 1024:
+                        speed_str = f"{speed / (1024 * 1024):.2f} MB/s"
+                    elif speed >= 1024:
+                        speed_str = f"{speed / 1024:.1f} KB/s"
+                    else:
+                        speed_str = f"{speed:.0f} B/s"
+
+                    if total_bytes > 0:
+                        pct = dl_bytes / total_bytes
+                        pct_str = f"{pct * 100:.1f}%"
+                        self.after(0, lambda p=pct: self.dl_progressbar.set(p))
+                    else:
+                        pct_str = "..."
+
+                    fname = os.path.basename(l_file)
+                    st_txt = f"Baixando {fname} - {pct_str} ({speed_str})"
+                    self.after(0, lambda t=st_txt: self.dl_status_label.configure(text=t))
+
+            client_inst.download_file(r_file, l_file, file_progress_cb, size)
             check_pause_and_cancel()
             self.current_downloading_file = None
 

@@ -14,6 +14,66 @@ import config
 import ftp_client
 import utils
 
+class CTkToolTip:
+    """Exibe um tooltip flutuante moderno ao passar o mouse sobre um widget do CustomTkinter."""
+    def __init__(self, widget, text, delay=300):
+        self.widget = widget
+        self.text = text
+        self.delay = delay
+        self.tooltip_window = None
+        self.id = None
+        
+        self.widget.bind("<Enter>", self.schedule_show, add="+")
+        self.widget.bind("<Leave>", self.hide, add="+")
+        self.widget.bind("<ButtonPress>", self.hide, add="+")
+
+    def schedule_show(self, event=None):
+        self.hide()
+        self.id = self.widget.after(self.delay, self.show)
+
+    def show(self, event=None):
+        if self.tooltip_window or not self.text:
+            return
+        
+        try:
+            x = self.widget.winfo_rootx() + 20
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
+
+            self.tooltip_window = tw = ctk.CTkToplevel(self.widget)
+            tw.wm_overrideredirect(True)
+            tw.wm_geometry(f"+{x}+{y}")
+            tw.attributes("-topmost", True)
+
+            label = ctk.CTkLabel(
+                tw,
+                text=self.text,
+                justify="left",
+                corner_radius=6,
+                fg_color=("#2b2b2b", "#1f1f1f"),
+                text_color="#ffffff",
+                font=ctk.CTkFont(size=11),
+                padx=10,
+                pady=6
+            )
+            label.pack()
+        except Exception:
+            pass
+
+    def hide(self, event=None):
+        if self.id:
+            try:
+                self.widget.after_cancel(self.id)
+            except Exception:
+                pass
+            self.id = None
+        if self.tooltip_window:
+            try:
+                self.tooltip_window.destroy()
+            except Exception:
+                pass
+            self.tooltip_window = None
+
+
 class CommonMixin:
     """Popups e utilitários de UI compartilhados entre NBS e Apollo."""
 

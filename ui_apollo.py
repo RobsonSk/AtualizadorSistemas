@@ -14,6 +14,7 @@ import config
 import ftp_client
 import utils
 from changelog import CHANGELOG_APOLLO
+from ui_common import CTkToolTip
 
 class ApolloMixin:
     """Interface, abas e lógica de negócios específica do sistema Apollo/Linx."""
@@ -813,6 +814,38 @@ class ApolloMixin:
                 if self.linx_dl_server_var.get():
                     log(f"Aviso: {label} não possui pacote de Server. Ignorando download Server para {label}.")
 
+            def create_progress_callback(filename_display):
+                start_t = time.time()
+                last_u = 0
+
+                def file_progress_cb(dl_bytes, total_bytes):
+                    nonlocal last_u
+                    check_pause_cancel()
+                    now = time.time()
+                    if now - last_u >= 0.1 or (total_bytes > 0 and dl_bytes >= total_bytes):
+                        last_u = now
+                        elapsed = max(now - start_t, 0.001)
+                        speed = dl_bytes / elapsed
+
+                        if speed >= 1024 * 1024:
+                            speed_str = f"{speed / (1024 * 1024):.2f} MB/s"
+                        elif speed >= 1024:
+                            speed_str = f"{speed / 1024:.1f} KB/s"
+                        else:
+                            speed_str = f"{speed:.0f} B/s"
+
+                        if total_bytes > 0:
+                            pct = dl_bytes / total_bytes
+                            pct_str = f"{pct * 100:.1f}%"
+                            self.after(0, lambda p=pct: self.linx_dl_progressbar.set(p))
+                        else:
+                            pct_str = "..."
+
+                        status_text = f"Baixando {filename_display} - {pct_str} ({speed_str})"
+                        self.after(0, lambda t=status_text: self.linx_dl_status_label.configure(text=t))
+
+                return file_progress_cb
+
             success_count = 0
             for label, url, filename in downloads_to_make:
                 check_pause_cancel()
@@ -822,8 +855,9 @@ class ApolloMixin:
                 status(f"Baixando {filename}...")
                 self.after(0, lambda: self.linx_dl_progressbar.set(0))
 
+                file_cb = create_progress_callback(filename)
                 self.linx_current_downloading_file = dest_file
-                utils.download_http_file(url, dest_file, progress_callback, check_pause_cancel)
+                utils.download_http_file(url, dest_file, file_cb, check_pause_cancel)
                 self.linx_current_downloading_file = None
 
                 log(f"Download concluído: {filename}")
@@ -915,18 +949,33 @@ class ApolloMixin:
                 self.stop_process_by_regex(kill_pat)
 
             # Realiza backup dos executáveis e DLLs da pasta C:\Apollo\atualiza somente antes da descompactação
+            new_apollo_backup_zip_path = None
             if c.get("linx_backup_apollo", False):
                 status("Fazendo backup do Apollo (EXE/DLL)...")
                 log("\n--- INICIANDO BACKUP AUTOMÁTICO DO APOLLO (EXE E DLL) ---")
                 parent_apollo = os.path.dirname(dest_normal.rstrip("\\/"))
-                date_str = datetime.now().strftime("%d%m%Y")
+                date_str = datetime.now().strftime("%d%m%Y_%H%M%S")
                 backup_folder_name = f"backup_{date_str}"
                 backup_dir = os.path.join(parent_apollo if parent_apollo else dest_normal, backup_folder_name)
                 log(f"Diretório Apollo (origem): {os.path.abspath(dest_normal)}")
                 log(f"Diretório de backup (destino): {os.path.abspath(backup_dir)}")
                 backup_ok = utils.backup_apollo_executables_and_dlls(dest_normal, backup_dir, log)
                 if backup_ok:
-                    log(f"Backup dos arquivos EXE e DLL do Apollo realizado com sucesso em '{backup_folder_name}'.")
+                    log(f"Cópia dos arquivos EXE e DLL do Apollo realizada com sucesso em '{backup_folder_name}'.")
+                    log("Compactando pasta de backup do Apollo (.zip)...")
+                    zip_path = utils.compress_folder(backup_dir, 'zip', log)
+                    if zip_path and os.path.exists(zip_path):
+                        new_apollo_backup_zip_path = zip_path
+                        log(f"Backup compactado gerado com sucesso: {os.path.basename(zip_path)}")
+                        log("Removendo pasta de backup descompactada temporária...")
+                        try:
+                            import shutil
+                            shutil.rmtree(backup_dir)
+                            log("Pasta de backup descompactada e arquivos copiados removidos com sucesso.")
+                        except Exception as rm_err:
+                            log(f"Aviso ao remover pasta temporária de backup: {str(rm_err)}")
+                    else:
+                        log("Aviso: Falha ao compactar pasta de backup do Apollo.")
                 else:
                     log("Aviso: Falha ao realizar backup do Apollo ou nenhum arquivo EXE/DLL encontrado.")
                 log("---------------------------------------------------------\n")
@@ -1047,6 +1096,21 @@ class ApolloMixin:
                         log(f"Aviso ao remover zip {z_file}: {str(e_rm)}")
             log(f"Limpeza concluída. {deleted_zips_count} arquivos .zip removidos da pasta de origem.")
 
+            # Se o backup atual foi gerado e a atualização foi completada com sucesso, exclui o backup zip anterior
+            if new_apollo_backup_zip_path and os.path.exists(new_apollo_backup_zip_path):
+                old_backup_zip = c.get("last_apollo_backup_zip", "")
+                if old_backup_zip and os.path.exists(old_backup_zip) and os.path.abspath(old_backup_zip) != os.path.abspath(new_apollo_backup_zip_path):
+                    log(f"\nExcluindo backup zip antigo anterior: {os.path.basename(old_backup_zip)}...")
+                    try:
+                        os.remove(old_backup_zip)
+                        log(f"Backup zip antigo {os.path.basename(old_backup_zip)} excluído com sucesso.")
+                    except Exception as rm_old_err:
+                        log(f"Aviso ao excluir backup zip antigo anterior: {str(rm_old_err)}")
+                
+                # Salva o novo caminho de backup zip no config
+                c["last_apollo_backup_zip"] = os.path.abspath(new_apollo_backup_zip_path)
+                config.save_config(c)
+
             log("\n--- PROCESSO DE ATUALIZAÇÃO CONCLUÍDO COM SUCESSO ---")
             status("Atualização Concluída.")
             progress(1.0)
@@ -1084,7 +1148,7 @@ class ApolloMixin:
         cleanup_frame.grid(row=2, column=0, padx=20, pady=10, sticky="ew")
         cleanup_frame.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(cleanup_frame, text="Limpeza de Executáveis e DLLs do Linx", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
+        ctk.CTkLabel(cleanup_frame, text="Limpeza de Executáveis e DLLs do Linx", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 10), sticky="w")
         
         details_text = (
             "Esta ferramenta permite listar, pesquisar e excluir arquivos executáveis (.exe) e bibliotecas (.dll)\n"
@@ -1093,59 +1157,55 @@ class ApolloMixin:
             "Você pode utilizar filtros de texto comum, glob (ex: *2026*.dll) ou expressões regulares (regex) para pesquisar\n"
             "e marcar somente os arquivos desejados para a remoção definitiva."
         )
-        ctk.CTkLabel(cleanup_frame, text=details_text, justify="left", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")
-
         self.linx_cleanup_btn = ctk.CTkButton(cleanup_frame, text="Limpar Executáveis/DLLs Linx", font=ctk.CTkFont(size=13, weight="bold"), height=35, command=self.open_linx_cleanup_popup)
-        self.linx_cleanup_btn.grid(row=2, column=0, padx=15, pady=(0, 20), sticky="w")
+        self.linx_cleanup_btn.grid(row=1, column=0, padx=15, pady=(0, 20), sticky="w")
+        CTkToolTip(self.linx_cleanup_btn, details_text)
 
         # Extension cleanup card
         ext_frame = ctk.CTkFrame(tab)
         ext_frame.grid(row=3, column=0, padx=20, pady=10, sticky="ew")
         ext_frame.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(ext_frame, text="Limpeza de Arquivos por Extensão (Linx)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
+        ctk.CTkLabel(ext_frame, text="Limpeza de Arquivos por Extensão (Linx)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 10), sticky="w")
         
         ext_details = (
             "Esta ferramenta permite pesquisar e excluir arquivos de qualquer extensão específica (ex: .log, .tmp, .zip)\n"
             "dentro dos diretórios do Linx ou outro diretório que você escolher.\n"
             "Você define a extensão a ser buscada, filtra os resultados e seleciona manualmente quais remover."
         )
-        ctk.CTkLabel(ext_frame, text=ext_details, justify="left", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")
-
         self.linx_ext_cleanup_btn = ctk.CTkButton(ext_frame, text="Limpar por Extensão Linx", font=ctk.CTkFont(size=13, weight="bold"), height=35, command=lambda: self.open_extension_cleanup_popup("linx"))
-        self.linx_ext_cleanup_btn.grid(row=2, column=0, padx=15, pady=(0, 20), sticky="w")
+        self.linx_ext_cleanup_btn.grid(row=1, column=0, padx=15, pady=(0, 20), sticky="w")
+        CTkToolTip(self.linx_ext_cleanup_btn, ext_details)
 
         # Remote Reboot via PowerShell Card
         linx_ps_frame = ctk.CTkFrame(tab)
         linx_ps_frame.grid(row=4, column=0, padx=20, pady=10, sticky="ew")
         linx_ps_frame.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(linx_ps_frame, text="Reinício de Servidores Remotos (PowerShell)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
+        ctk.CTkLabel(linx_ps_frame, text="Reinício de Servidores Remotos (PowerShell)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 10), sticky="w")
         
         linx_ps_details = (
             "Esta ferramenta permite enviar o comando PowerShell (`Restart-Computer`) para reiniciar servidores adjacentes do Linx.\n"
             "Permite forçar o reinício (-Force) encerrando sessões de usuários conectados e serviços ativos no servidor de destino."
         )
-        ctk.CTkLabel(linx_ps_frame, text=linx_ps_details, justify="left", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")
-
         self.linx_ps_reboot_btn = ctk.CTkButton(linx_ps_frame, text="Reiniciar Servidor Linx (PowerShell)", font=ctk.CTkFont(size=13, weight="bold"), height=35, command=lambda: self.open_powershell_restart_popup("linx"))
-        self.linx_ps_reboot_btn.grid(row=2, column=0, padx=15, pady=(0, 20), sticky="w")
+        self.linx_ps_reboot_btn.grid(row=1, column=0, padx=15, pady=(0, 20), sticky="w")
+        CTkToolTip(self.linx_ps_reboot_btn, linx_ps_details)
 
         # Task Scheduler (Agendador de Tarefas do Windows) Card
         taskschd_frame = ctk.CTkFrame(tab)
         taskschd_frame.grid(row=5, column=0, padx=20, pady=10, sticky="ew")
         taskschd_frame.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(taskschd_frame, text="Agendador de Tarefas do Windows (Task Scheduler)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
+        ctk.CTkLabel(taskschd_frame, text="Agendador de Tarefas do Windows (Task Scheduler)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 10), sticky="w")
         
         taskschd_details = (
             "Atalho para abrir a interface gráfica do Agendador de Tarefas do Windows (`taskschd.msc`).\n"
             "Permite visualizar, criar, editar ou desativar tarefas agendadas no sistema."
         )
-        ctk.CTkLabel(taskschd_frame, text=taskschd_details, justify="left", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")
-
         self.taskschd_btn = ctk.CTkButton(taskschd_frame, text="Abrir Agendador de Tarefas (taskschd.msc)", font=ctk.CTkFont(size=13, weight="bold"), height=35, fg_color="#16a085", hover_color="#1abc9c", command=self.open_task_scheduler)
-        self.taskschd_btn.grid(row=2, column=0, padx=15, pady=(0, 20), sticky="w")
+        self.taskschd_btn.grid(row=1, column=0, padx=15, pady=(0, 20), sticky="w")
+        CTkToolTip(self.taskschd_btn, taskschd_details)
 
 
     def open_task_scheduler(self):

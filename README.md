@@ -37,29 +37,32 @@ O sistema possui comportamento **Cross-Platform**: funciona plenamente no Window
 
 ### 2. Sistema NBS (FTP & Distribuição)
 *   **Downloads de Módulos (FTP)**: Consulta inteligente de datas de arquivos no servidor FTP usando o comando `MDTM` para baixar apenas os módulos modificados a partir da data de corte.
+*   **Monitoramento em Tempo Real de Download**: Exibe a porcentagem exata (`.1f%`) de progresso e a velocidade instantânea em **MB/s**, **KB/s** ou **B/s** durante as transferências FTP.
 *   **Instalação Inicial**: Opção para ignorar a data de corte e forçar o download completo de todos os módulos oficiais e DLLs de apoio.
 *   **Execução de Scripts SQL**: Identifica e executa scripts de banco de dados (`.sql` ou `.exe` compilados) com elevação de privilégios (UAC).
 *   **Distribuição de Rede**: Distribui de forma concorrente os arquivos atualizados para múltiplos servidores da rede local cadastrados na lista.
 *   **Backup Automático**: Compacta a pasta de backup antiga no formato `.zip` com opção de excluir o diretório descompactado de origem para economizar espaço em disco.
-*   **Aba Utilitários NBS (Limpeza de Executáveis)**: Permite listar, pesquisar por Glob/Regex e excluir arquivos executáveis (`.exe`) na pasta local do NBS, seguindo a mesma interface avançada de pesquisa e seleção interativa.
-*   **Limpeza por Extensão (NBS)**: Permite pesquisar e remover arquivos de qualquer extensão informada pelo usuário (ex: `.log`, `.tmp`, `.zip`) dentro da pasta NBS ou outro diretório customizado de forma interativa.
+*   **Aba Utilitários NBS**: Ferramentas de limpeza de executáveis (`.exe`), limpeza por extensão customizada (`.log`, `.tmp`, `.zip`) e reinício remoto com explicações exibidas através de **Tooltips** flutuantes ao passar o mouse sobre os botões.
 
 ### 3. Sistema Linx DMS (HTTP & Serviços)
 *   **Downloads Modulares**: Baixa pacotes evolutivos Delphi (Padrão), 3 Camadas Server, 3 Camadas Client, Instalador Web, DMS Comissões, Apoio (Troca Fornecedor, Troca Série, Verifica Diária) e o **Linx DMS Integrador**.
+*   **Monitoramento em Tempo Real de Download**: Exibe a porcentagem exata (`.1f%`) de progresso e a velocidade instantânea em **MB/s**, **KB/s** ou **B/s** durante os downloads de pacotes HTTP/HTTPS.
 *   **Descompactação e Atualização Automatizada**:
     *   **Arquivos Normais (Delphi)**: Extraídos e copiados diretamente para `C:\Apollo\Atualiza`.
     *   **Servidor 3 Camadas**: Extraídos e copiados diretamente para `C:\3Camadas`.
     *   **Cliente 3 Camadas**: Extraídos e copiados diretamente para `C:\3Camadas\Atualiza`.
     *   **Instalador Web / Integrador**: Após o download do `LinxDMS.zip` ou `LinxDMSIntegrador.zip`, a ferramenta varre a pasta extraída, encontra o instalador nativo (`.exe` ou `.msi`) e o executa com **privilégios elevados como Administrador**.
+*   **Backup Automático Apollo (Compactação & Limpeza Automática)**:
+    *   Copia executáveis e DLLs de `C:\Apollo\atualiza` antes da aplicação dos novos pacotes.
+    *   Compacta automaticamente a pasta em arquivo `.zip` e deleta o diretório descompactado temporário com os arquivos copiados.
+    *   Ao finalizar com sucesso a atualização, identifica e exclui automaticamente o arquivo `.zip` de backup anterior registrado no arquivo de configurações (`config.enc`).
 *   **Painel de Monitoramento de Serviços**:
     *   Exibe o status em tempo real de até 4 serviços cruciais no Windows: `DFeServico`, `RedirecionaDatasnap`, `VerificaServer3Camadas` e `dmLDIServer` (Serviço Integrador).
     *   Fornece botões para **Iniciar** ou **Parar** cada serviço de forma totalmente assíncrona, evitando travamentos na tela.
-*   **Aba Utilitários Linx (Limpeza de Executáveis e DLLs)**:
-    *   Lista todos os arquivos executáveis e bibliotecas das pastas selecionadas.
-    *   Focado por padrão nas pastas **`C:\Apollo`** e **`C:\3camadas`**.
-    *   **Botão de Pesquisa Customizada**: Permite selecionar interativamente qualquer outra pasta do disco para realizar o escaneamento.
-    *   **Pesquisa Avançada (Glob e Regex)**: Filtra os arquivos usando curingas comuns (Ex: `*2026*.dll`) ou expressões regulares avançadas (Ex: `^DMS_.*\.exe$`).
-*   **Limpeza por Extensão (Linx)**: Permite pesquisar e remover arquivos de qualquer extensão informada pelo usuário (ex: `.log`, `.tmp`, `.zip`) dentro das pastas do Linx ou outro diretório customizado de forma interativa.
+*   **Aba Utilitários Linx (Interface com Tooltips)**:
+    *   Exibição das explicações detalhadas de cada ferramenta através de **Tooltips** flutuantes ao passar o mouse sobre os botões.
+    *   Limpeza por executáveis/DLLs e por extensão customizada (.log, .tmp, .zip) com suporte a Glob e Regex.
+    *   Reinício remoto via PowerShell com monitoramento por PING e atalho para o Agendador de Tarefas do Windows (`taskschd.msc`).
 *   **Menu de Observações (NBS & Linx DMS)**: Campo de texto livre sem limite de caracteres e com suporte a quebras de linha para anotações, lembretes e históricos locais, persistido automaticamente no arquivo de configuração criptografado (`config.enc`).
 
 ### 4. Configurações Dinâmicas e Tema Sincronizado
