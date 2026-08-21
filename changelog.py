@@ -5,10 +5,21 @@ Importado em ui_nbs.py e ui_apollo.py para renderização nas abas 'Sobre'.
 """
 
 CHANGELOG_NBS = (
+    "=== Versão 2.0.0 ===\n"
+    "- Reescrita e migração completa do Frontend para PySide6 (Qt 6) com interface gráfica moderna, fluida e responsiva.\n"
+    "- Arquitetura 100% thread-safe baseada em Qt Signals e Slots para atualizações em tempo real do console de log, barras de progresso e badges sem travamento da UI.\n"
+    "- Tela de Observações interativa da máquina/cliente com edição de texto e salvamento dinâmico no arquivo de configuração.\n"
+    "- Otimizações nos fluxos de download FTP, descompactação de scripts, backups automatizados e controle de licenças via REST API.\n\n"
+    "=== Versão 1.6.0 ===\n"
+
+    "- Implementada limpeza automática no diretório de Atualização (C:\\Atualizacao): mantém apenas a pasta atual e 1 pasta de atualização anterior (máximo de 2 pastas), excluindo pastas de datas anteriores mais antigas.\n"
+    "- Integração completa do sistema de licenciamento REST API com trava de Hardware ID (HWID SHA-256) e Gatekeeper no arranque do aplicativo.\n"
+    "- Adicionada revalidação periódica de licença em segundo plano e exibição de status, empresa, validade e HWID no painel de informações.\n\n"
     "=== Versão 1.5.0 ===\n"
-    "- Adicionada exibição da porcentagem (%) de progresso e velocidade de download em tempo real (MB/s ou KB/s) no painel de status do NBS.\n"
+    "- Adicionada exibição da porcentagem (%) de progresso, velocidade de transferência e tempo estimado até conclusão (ETA) em tempo real nos downloads (FTP) e compactação de backups (.zip).\n"
     "- Configurados Tooltips flutuantes nas descrições das ferramentas da aba Utilitários do NBS.\n\n"
     "=== Versão 1.4.0 ===\n"
+
     "- Suporte a credenciais de rede SMB específicas (usuário e senha customizados ou usuário logado do Windows) no cadastro de servidores de distribuição.\n"
     "- Implementada renderização inteligente sem oscilação (flicker-free) na atualização em tempo real das listas de servidores.\n"
     "- Otimização do contêiner rolável da aba de Utilitários evitando que botões de ação sejam cortados ou espremidos verticalmente.\n\n"
@@ -97,8 +108,21 @@ CHANGELOG_NBS = (
 )
 
 CHANGELOG_APOLLO = (
+    "=== Versão 2.0.0 ===\n"
+    "- Reescrita e migração completa da interface do Linx DMS / Apollo para PySide6 (Qt 6) com visual moderno, alta performance e suporte nativo a temas.\n"
+    "- Roteamento dinâmico inteligente de pacotes de atualização para pastas de destino Delphi (Apollo/Atualiza), 3Camadas Server e 3Camadas Client.\n"
+    "- Extração temporária automatizada e execução elevada como Administrador para instaladores Web (`LinxDMS.zip`) e Integrador (`LinxDMSIntegrador.zip`).\n"
+    "- Painel de monitoramento e controle manual de serviços do Windows (`DFeServico`, `RedirecionaDatasnap`, `VerificaServer3Camadas`, `dmLDIServer`) via Qt Signals.\n"
+    "- Exclusão automatizada dos arquivos `.zip` da pasta de origem (`C:\\atualizacao`) após a conclusão da descompactação.\n"
+    "- Nova aba de Observações editável do Linx DMS para anotações do cliente/máquina com persistência local em tempo real.\n\n"
+    "=== Versão 1.4.0 ===\n"
+
+    "- Backup da pasta Apollo/atualiza: verificação e exclusão automatizada de arquivos zipados (.zip) de backups anteriores, mantendo apenas a cópia compactada mais recente.\n"
+    "- Integração do sistema de licenciamento REST API com trava de Hardware ID (HWID SHA-256) e Gatekeeper no arranque do aplicativo.\n"
+    "- Exibição das informações de licenciamento e HWID no painel de status da aba 'Sobre o Linx'.\n\n"
     "=== Versão 1.3.0 ===\n"
-    "- Compactação automática (.zip) da pasta de backup do Apollo (EXE/DLL) e exclusão da pasta descompactada temporária.\n"
+    "- Compactação automática (.zip) da pasta de backup do Apollo (EXE/DLL) com exibição de porcentagem (%), velocidade e tempo estimado até a conclusão (ETA).\n"
+
     "- Exclusão automatizada do último backup zip anterior após a conclusão bem-sucedida da atualização e persistência do caminho no arquivo de configurações.\n"
     "- Configurados Tooltips flutuantes nas descrições da aba Utilitários Linx mantendo a estrutura visual e tamanho original dos cartões.\n"
     "- Adicionada exibição da porcentagem (%) de progresso e velocidade de download em tempo real (MB/s ou KB/s) no painel de status do Linx.\n\n"
@@ -135,7 +159,7 @@ CHANGELOG_APOLLO = (
     "- Corrigidos problemas de segurança de threads (TclError) ao atualizar status de serviços de forma assíncrona.\n"
     "- Ajustado tamanho e alinhamento dos cards na tela inicial (350px de largura com ancoragem de textos à esquerda).\n\n"
     "=== Versão 1.0.5 ===\n"
-    "- Configuração de valores padrão para versão (5.19) e caminhos de atualização (C:\\atualizacao no Windows e /home/robson.santos@DTACENTER.MR/Dev/AtualizadorNBS no Linux).\n"
+    "- Configuração de valores padrão para versão (5.19) e caminhos de atualização (C:\\atualizacao no Windows e /home/usuario/Dev/AtualizadorNBS no Linux).\n"
     "- Salvamento automático de versão e caminho ao perder o foco (FocusOut), pressionar Enter (Return) ou ao fechar o programa.\n"
     "- Corrigido problema de carregamento de interface que sobrescrevia as configurações com campos vazios na inicialização.\n"
     "- Implementação de aba dedicada 'Sobre o Linx' com changelog e documentação específica.\n\n"

@@ -5,273 +5,258 @@ import platform
 import threading
 import time
 from datetime import datetime
-from tkinter import filedialog, messagebox
-import shutil
 
-import customtkinter as ctk
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
+    QPushButton, QLabel, QLineEdit, QCheckBox, QComboBox, QTextEdit,
+    QProgressBar, QGroupBox, QScrollArea, QMessageBox, QFileDialog, QFrame
+)
 
 import config
-import ftp_client
 import utils
 from changelog import CHANGELOG_APOLLO
 from ui_common import CTkToolTip
+from license_gatekeeper import LicenseManager, LicenseActivationDialog, get_hwid
+
+
+def set_entry_text(widget, text):
+    if widget is not None:
+        widget.setText(str(text) if text is not None else "")
+
+
+def get_entry_text(widget):
+    if widget is not None:
+        return widget.text().strip()
+    return ""
+
 
 class ApolloMixin:
-    """Interface, abas e lógica de negócios específica do sistema Apollo/Linx."""
-
-    def setup_tab_linx_about(self):
-        tab = self.frame_linx_about
-        tab.grid_columnconfigure(0, weight=1)
-        tab.grid_rowconfigure(3, weight=1)
-
-        # Title
-        ctk.CTkLabel(tab, text="Sobre o Atualizador Linx", font=ctk.CTkFont(size=20, weight="bold")).grid(row=0, column=0, padx=20, pady=(20, 5), sticky="w")
-
-        # Dev info
-        info_frame = ctk.CTkFrame(tab)
-        info_frame.grid(row=1, column=0, padx=20, pady=10, sticky="ew")
-        info_frame.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(info_frame, text="Informações do Desenvolvedor e Versão", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(10, 5), sticky="w")
-        
-        details_text = (
-            "Desenvolvedor: Robson Santos\n"
-            "Contato: robsonshk@gmail.com\n"
-            "Versão do Programa: 1.2.0\n"
-            "Finalidade: Facilitar o download, descompactação, aplicação de atualizações e limpeza de arquivos do sistema Linx DMS."
-        )
-        ctk.CTkLabel(info_frame, text=details_text, justify="left", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=(0, 15), sticky="w")
-
-        # Changelog Section
-        ctk.CTkLabel(tab, text="Histórico de Alterações do Linx (Changelog)", font=ctk.CTkFont(size=15, weight="bold")).grid(row=2, column=0, padx=20, pady=(15, 5), sticky="w")
-
-        self.linx_changelog_box = ctk.CTkTextbox(tab, font=ctk.CTkFont(family="monospace", size=11))
-        self.linx_changelog_box.grid(row=3, column=0, padx=20, pady=(0, 20), sticky="nsew")
-
-        self.linx_changelog_box.insert("0.0", CHANGELOG_APOLLO)
-        self.linx_changelog_box.configure(state="disabled")
-
+    """Interface, abas e lógica de negócios específica do sistema Linx DMS / Apollo."""
 
     def setup_tab_linx_download(self):
         tab = self.frame_linx_download
-        tab.grid_columnconfigure(0, weight=1)
-        tab.grid_columnconfigure(1, weight=1)
-        tab.grid_rowconfigure(0, weight=1)
-        tab.grid_rowconfigure(1, weight=0)
+        layout = QHBoxLayout(tab)
 
-        # Left Column Frame (Parameters)
-        self.linx_dl_left_frame = ctk.CTkScrollableFrame(tab)
-        self.linx_dl_left_frame.grid(row=0, column=0, padx=(10, 5), pady=10, sticky="nsew")
-        self.linx_dl_left_frame.grid_columnconfigure(0, weight=1)
+        # Left Column (Download Parameters)
+        scroll_left = QScrollArea()
+        scroll_left.setWidgetResizable(True)
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        scroll_left.setWidget(left_widget)
 
-        ctk.CTkLabel(self.linx_dl_left_frame, text="Parâmetros de Execução Linx", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
+        param_group = QGroupBox("Parâmetros do Linx DMS")
+        param_layout = QVBoxLayout(param_group)
 
-        # Package selection
-        ctk.CTkLabel(self.linx_dl_left_frame, text="Pacote Linx:", anchor="w").grid(row=1, column=0, padx=15, pady=(10, 0), sticky="w")
-        self.linx_package_menu = ctk.CTkOptionMenu(self.linx_dl_left_frame, values=["LINXDMS", "HPE", "BRAVOS", "TOYOTA"], command=lambda x: self.save_ui_to_config())
-        self.linx_package_menu.grid(row=2, column=0, padx=15, pady=2, sticky="ew")
+        pkg_row = QHBoxLayout()
+        pkg_row.addWidget(QLabel("Pacote / Sistema:"))
+        self.linx_package_menu = QComboBox()
+        self.linx_package_menu.addItems(["LINXDMS", "HPE", "BRAVOS", "TOYOTA"])
+        pkg_row.addWidget(self.linx_package_menu, 1)
+        param_layout.addLayout(pkg_row)
 
-        # Version entry (saved when starting download or saving manually)
-        ctk.CTkLabel(self.linx_dl_left_frame, text="Versão (ex: 5.19):", anchor="w").grid(row=3, column=0, padx=15, pady=(10, 0), sticky="w")
-        self.linx_version_entry = ctk.CTkEntry(self.linx_dl_left_frame, placeholder_text="5.19")
-        self.linx_version_entry.grid(row=4, column=0, padx=15, pady=2, sticky="ew")
-        self.linx_version_entry.bind("<FocusOut>", lambda e: self.save_ui_to_config())
-        self.linx_version_entry.bind("<Return>", lambda e: self.save_ui_to_config())
+        ver_row = QHBoxLayout()
+        ver_row.addWidget(QLabel("Versão (Ex: v5.19):"))
+        self.linx_version_entry = QLineEdit("5.19")
+        ver_row.addWidget(self.linx_version_entry, 1)
+        param_layout.addLayout(ver_row)
 
-        # Download path entry (saved when starting download or saving manually)
-        ctk.CTkLabel(self.linx_dl_left_frame, text="Diretório de Gravação:", anchor="w").grid(row=5, column=0, padx=15, pady=(10, 0), sticky="w")
-        path_frame = ctk.CTkFrame(self.linx_dl_left_frame, fg_color="transparent")
-        path_frame.grid(row=6, column=0, padx=15, pady=2, sticky="ew")
-        path_frame.grid_columnconfigure(0, weight=1)
-        self.linx_path_entry = ctk.CTkEntry(path_frame)
-        self.linx_path_entry.grid(row=0, column=0, sticky="ew")
-        self.linx_path_entry.bind("<FocusOut>", lambda e: self.save_ui_to_config())
-        self.linx_path_entry.bind("<Return>", lambda e: self.save_ui_to_config())
-        ctk.CTkButton(path_frame, text="...", width=30, command=lambda: self.browse_directory(self.linx_path_entry)).grid(row=0, column=1, padx=(5, 0))
+        path_row = QHBoxLayout()
+        path_row.addWidget(QLabel("Pasta Destino Download:"))
+        self.linx_path_entry = QLineEdit()
+        btn_browse_linx = QPushButton("...")
+        btn_browse_linx.setFixedWidth(40)
+        btn_browse_linx.clicked.connect(lambda: self.browse_directory(self.linx_path_entry))
+        path_row.addWidget(self.linx_path_entry, 1)
+        path_row.addWidget(btn_browse_linx)
+        param_layout.addLayout(path_row)
 
-        # Right Column Frame (Options)
-        self.linx_dl_right_frame = ctk.CTkScrollableFrame(tab)
-        self.linx_dl_right_frame.grid(row=0, column=1, padx=(5, 10), pady=10, sticky="nsew")
-        self.linx_dl_right_frame.grid_columnconfigure(0, weight=1)
+        param_layout.addWidget(QLabel("Módulos para Download:"))
+        self.linx_dl_delphi_var = QCheckBox("Delphi (Download Padrão)")
+        self.linx_dl_delphi_var.setChecked(True)
+        self.linx_dl_server_var = QCheckBox("3 Camadas - Server")
+        self.linx_dl_client_var = QCheckBox("3 Camadas - Client")
+        self.linx_dl_web_var = QCheckBox("Instalador Web (LinxDMS Web)")
+        self.linx_dl_comissoes_var = QCheckBox("DMS Comissões")
+        self.linx_dl_apoio_trocafornec_var = QCheckBox("Apoio - Troca Fornecedor")
+        self.linx_dl_apoio_trocaserie_var = QCheckBox("Apoio - Troca Série Transm.")
+        self.linx_dl_apoio_verificadiaria_var = QCheckBox("Apoio - Verifica Comp. Diária")
+        self.linx_dl_integrador_var = QCheckBox("Linx DMS Integrador")
+        self.linx_backup_apollo_var = QCheckBox("Backup EXE e DLLs (C:\\Apollo\\atualiza) antes de descompactar")
 
-        ctk.CTkLabel(self.linx_dl_right_frame, text="Opções de Download Linx", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 5), sticky="w")
+        param_layout.addWidget(self.linx_dl_delphi_var)
+        param_layout.addWidget(self.linx_dl_server_var)
+        param_layout.addWidget(self.linx_dl_client_var)
+        param_layout.addWidget(self.linx_dl_web_var)
+        param_layout.addWidget(self.linx_dl_comissoes_var)
+        param_layout.addWidget(self.linx_dl_apoio_trocafornec_var)
+        param_layout.addWidget(self.linx_dl_apoio_trocaserie_var)
+        param_layout.addWidget(self.linx_dl_apoio_verificadiaria_var)
+        param_layout.addWidget(self.linx_dl_integrador_var)
+        param_layout.addWidget(self.linx_backup_apollo_var)
 
-        # Checkboxes for different types of packages
-        self.linx_dl_delphi_var = ctk.BooleanVar()
-        self.linx_dl_delphi_check = ctk.CTkCheckBox(self.linx_dl_right_frame, text="Delphi (Download Padrão)", variable=self.linx_dl_delphi_var, command=self.save_ui_to_config)
-        self.linx_dl_delphi_check.grid(row=1, column=0, padx=15, pady=5, sticky="w")
+        left_layout.addWidget(param_group)
 
-        self.linx_dl_server_var = ctk.BooleanVar()
-        self.linx_dl_server_check = ctk.CTkCheckBox(self.linx_dl_right_frame, text="3 Camadas - Server", variable=self.linx_dl_server_var, command=self.save_ui_to_config)
-        self.linx_dl_server_check.grid(row=2, column=0, padx=15, pady=5, sticky="w")
+        # Right Column (Logs & Action)
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
 
-        self.linx_dl_client_var = ctk.BooleanVar()
-        self.linx_dl_client_check = ctk.CTkCheckBox(self.linx_dl_right_frame, text="3 Camadas - Client", variable=self.linx_dl_client_var, command=self.save_ui_to_config)
-        self.linx_dl_client_check.grid(row=3, column=0, padx=15, pady=5, sticky="w")
+        self.linx_dl_status_label = QLabel("Status: Aguardando download...")
+        self.linx_dl_status_label.setStyleSheet("font-weight: bold; font-size: 12px; color: #89b4fa;")
 
-        self.linx_dl_web_var = ctk.BooleanVar()
-        self.linx_dl_web_check = ctk.CTkCheckBox(self.linx_dl_right_frame, text="Instalador Web (LinxDMS Web)", variable=self.linx_dl_web_var, command=self.save_ui_to_config)
-        self.linx_dl_web_check.grid(row=4, column=0, padx=15, pady=5, sticky="w")
+        self.linx_dl_progressbar = QProgressBar()
+        self.linx_dl_progressbar.setRange(0, 100)
 
-        # Checkboxes for new modules
-        ctk.CTkLabel(self.linx_dl_right_frame, text="Módulos Adicionais & Apoio", font=ctk.CTkFont(size=14, weight="bold")).grid(row=5, column=0, padx=15, pady=(12, 5), sticky="w")
+        self.linx_dl_log_box = QTextEdit()
+        self.linx_dl_log_box.setReadOnly(True)
+        self.linx_dl_log_box.setStyleSheet("font-family: monospace; font-size: 11px; background-color: #181825; color: #cdd6f4; border: 1px solid #45475a;")
 
-        self.linx_dl_comissoes_var = ctk.BooleanVar()
-        self.linx_dl_comissoes_check = ctk.CTkCheckBox(self.linx_dl_right_frame, text="DMS Comissões", variable=self.linx_dl_comissoes_var, command=self.save_ui_to_config)
-        self.linx_dl_comissoes_check.grid(row=6, column=0, padx=15, pady=5, sticky="w")
+        btn_row = QHBoxLayout()
+        self.btn_run_linx_download = QPushButton("Iniciar Processo")
+        self.btn_run_linx_download.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 10px;")
+        self.btn_run_linx_download.clicked.connect(self.run_linx_download)
 
-        self.linx_dl_apoio_trocafornec_var = ctk.BooleanVar()
-        self.linx_dl_apoio_trocafornec_check = ctk.CTkCheckBox(self.linx_dl_right_frame, text="Apoio - Troca Fornecedor", variable=self.linx_dl_apoio_trocafornec_var, command=self.save_ui_to_config)
-        self.linx_dl_apoio_trocafornec_check.grid(row=7, column=0, padx=15, pady=5, sticky="w")
+        self.btn_pause_linx_download = QPushButton("Pausar")
+        self.btn_pause_linx_download.setEnabled(False)
+        self.btn_pause_linx_download.setStyleSheet("background-color: #e67e22; color: white; font-weight: bold; padding: 10px;")
+        self.btn_pause_linx_download.clicked.connect(self.toggle_linx_pause_download)
 
-        self.linx_dl_apoio_trocaserie_var = ctk.BooleanVar()
-        self.linx_dl_apoio_trocaserie_check = ctk.CTkCheckBox(self.linx_dl_right_frame, text="Apoio - Troca Série Transm.", variable=self.linx_dl_apoio_trocaserie_var, command=self.save_ui_to_config)
-        self.linx_dl_apoio_trocaserie_check.grid(row=8, column=0, padx=15, pady=5, sticky="w")
+        self.btn_cancel_linx_download = QPushButton("Cancelar")
+        self.btn_cancel_linx_download.setEnabled(False)
+        self.btn_cancel_linx_download.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold; padding: 10px;")
+        self.btn_cancel_linx_download.clicked.connect(self.cancel_linx_download)
 
-        self.linx_dl_apoio_verificadiaria_var = ctk.BooleanVar()
-        self.linx_dl_apoio_verificadiaria_check = ctk.CTkCheckBox(self.linx_dl_right_frame, text="Apoio - Verifica Comp. Diária", variable=self.linx_dl_apoio_verificadiaria_var, command=self.save_ui_to_config)
-        self.linx_dl_apoio_verificadiaria_check.grid(row=9, column=0, padx=15, pady=5, sticky="w")
+        btn_row.addWidget(self.btn_run_linx_download, 2)
+        btn_row.addWidget(self.btn_pause_linx_download, 1)
+        btn_row.addWidget(self.btn_cancel_linx_download, 1)
 
-        self.linx_dl_integrador_var = ctk.BooleanVar()
-        self.linx_dl_integrador_check = ctk.CTkCheckBox(self.linx_dl_right_frame, text="Linx DMS Integrador", variable=self.linx_dl_integrador_var, command=self.save_ui_to_config)
-        self.linx_dl_integrador_check.grid(row=10, column=0, padx=15, pady=5, sticky="w")
+        right_layout.addWidget(self.linx_dl_status_label)
+        right_layout.addWidget(self.linx_dl_progressbar)
+        right_layout.addWidget(self.linx_dl_log_box, 1)
+        right_layout.addLayout(btn_row)
 
-        # Opções de Backup
-        ctk.CTkLabel(self.linx_dl_right_frame, text="Opções de Backup", font=ctk.CTkFont(size=14, weight="bold")).grid(row=11, column=0, padx=15, pady=(12, 5), sticky="w")
+        layout.addWidget(scroll_left, 1)
+        layout.addWidget(right_widget, 1)
 
-        self.linx_backup_apollo_var = ctk.BooleanVar()
-        self.linx_backup_apollo_check = ctk.CTkCheckBox(self.linx_dl_right_frame, text="Backup EXE e DLLs (C:\\Apollo\\atualiza) antes de descompactar", variable=self.linx_backup_apollo_var, command=self.save_ui_to_config)
-        self.linx_backup_apollo_check.grid(row=12, column=0, padx=15, pady=5, sticky="w")
 
-        # Bottom Frame (Status, Progress and Launch Button)
-        self.linx_dl_bottom_frame = ctk.CTkFrame(tab)
-        self.linx_dl_bottom_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=(5, 10), sticky="ew")
-        self.linx_dl_bottom_frame.grid_columnconfigure(0, weight=4)
-        self.linx_dl_bottom_frame.grid_columnconfigure(1, weight=1)
+    def update_linx_paths_display(self):
+        c = getattr(self, "app_config", {})
+        p_norm = c.get("linx_path_normal_win", "C:\\Apollo\\Atualiza") if getattr(self, "os_type", "Windows") == "Windows" else c.get("linx_path_normal_linux", "./Apollo_Atualiza")
+        p_serv = c.get("linx_path_server_win", "C:\\3Camadas") if getattr(self, "os_type", "Windows") == "Windows" else c.get("linx_path_server_linux", "./3Camadas")
+        p_clit = c.get("linx_path_client_win", "C:\\3Camadas\\Atualiza") if getattr(self, "os_type", "Windows") == "Windows" else c.get("linx_path_client_linux", "./3Camadas_Atualiza")
 
-        # Log & Console
-        self.linx_console_log = ctk.CTkTextbox(self.linx_dl_bottom_frame, height=140, font=ctk.CTkFont(family="monospace", size=11))
-        self.linx_console_log.grid(row=0, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
-
-        self.linx_dl_status_label = ctk.CTkLabel(self.linx_dl_bottom_frame, text="Pronto para iniciar download Linx.", anchor="w")
-        self.linx_dl_status_label.grid(row=1, column=0, padx=10, pady=2, sticky="w")
-
-        self.linx_dl_progressbar = ctk.CTkProgressBar(self.linx_dl_bottom_frame)
-        self.linx_dl_progressbar.grid(row=2, column=0, padx=10, pady=5, sticky="ew")
-        self.linx_dl_progressbar.set(0)
-
-        self.linx_start_dl_btn = ctk.CTkButton(self.linx_dl_bottom_frame, text="Iniciar Processo", font=ctk.CTkFont(size=14, weight="bold"), height=35, command=self.start_linx_download_process)
-        self.linx_start_dl_btn.grid(row=1, column=1, rowspan=2, padx=10, pady=5, sticky="nsew")
-
-        self.linx_pause_dl_btn = ctk.CTkButton(self.linx_dl_bottom_frame, text="Pausar", font=ctk.CTkFont(size=13, weight="bold"), height=16, command=self.toggle_linx_pause_download)
-        self.linx_cancel_dl_btn = ctk.CTkButton(self.linx_dl_bottom_frame, text="Cancelar", font=ctk.CTkFont(size=13, weight="bold"), fg_color="#d9534f", hover_color="#c9302c", height=16, command=self.cancel_linx_download)
-
+        if hasattr(self, "dest_normal_lbl"):
+            self.dest_normal_lbl.setText(f"Apollo/Atualiza: {p_norm}")
+        if hasattr(self, "dest_server_lbl"):
+            self.dest_server_lbl.setText(f"3Camadas Server: {p_serv}")
+        if hasattr(self, "dest_client_lbl"):
+            self.dest_client_lbl.setText(f"3Camadas Client: {p_clit}")
 
     def setup_tab_linx_update(self):
         tab = self.frame_linx_update
-        tab.grid_columnconfigure(0, weight=3) # Left (Services)
-        tab.grid_columnconfigure(1, weight=4) # Right (Extraction/Update)
-        tab.grid_rowconfigure(0, weight=1)
+        layout = QHBoxLayout(tab)
 
         # Left Frame: Windows Services Control Panel
-        self.services_frame = ctk.CTkScrollableFrame(tab)
-        self.services_frame.grid(row=0, column=0, padx=(10, 5), pady=10, sticky="nsew")
-        self.services_frame.grid_columnconfigure(0, weight=1)
-        self.services_frame.grid_rowconfigure(4, weight=1) # Spacer
+        scroll_left = QScrollArea()
+        scroll_left.setWidgetResizable(True)
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        scroll_left.setWidget(left_widget)
 
-        ctk.CTkLabel(self.services_frame, text="Serviços do Windows", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 2), sticky="w")
-        ctk.CTkLabel(self.services_frame, text="Monitoramento e controle em tempo real", font=ctk.CTkFont(size=11, slant="italic")).grid(row=1, column=0, padx=15, pady=(0, 10), sticky="w")
+        srv_group = QGroupBox("Serviços do Windows (Monitoramento e Controle em Tempo Real)")
+        srv_layout = QVBoxLayout(srv_group)
 
-        # Container for services list
-        self.services_list_container = ctk.CTkFrame(self.services_frame, fg_color="transparent")
-        self.services_list_container.grid(row=2, column=0, padx=15, pady=5, sticky="ew")
-        self.services_list_container.grid_columnconfigure(0, weight=2) # Service Name
-        self.services_list_container.grid_columnconfigure(1, weight=1) # Status badge
-        self.services_list_container.grid_columnconfigure(2, weight=1) # Action button
+        self.services_list_container = QWidget()
+        self.services_grid = QGridLayout(self.services_list_container)
+        srv_layout.addWidget(self.services_list_container)
 
         self.service_status_labels = {}
         self.service_action_buttons = {}
 
-        # 3 Services list
-        self.build_services_ui()
+        self.btn_refresh_services = QPushButton("🔄 Atualizar Status dos Serviços")
+        self.btn_refresh_services.setStyleSheet("background-color: #34495e; color: white; font-weight: bold; padding: 6px;")
+        self.btn_refresh_services.clicked.connect(self.refresh_linx_services)
+        srv_layout.addWidget(self.btn_refresh_services)
 
-        # Refresh Services Button
-        self.refresh_services_btn = ctk.CTkButton(self.services_frame, text="Atualizar Status", font=ctk.CTkFont(weight="bold"), command=self.refresh_linx_services)
-        self.refresh_services_btn.grid(row=3, column=0, padx=15, pady=(15, 5), sticky="ew")
+        self.btn_stop_apolloserver = QPushButton("Fechar ApolloServer (*serverapp*)")
+        self.btn_stop_apolloserver.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold; padding: 6px;")
+        self.btn_stop_apolloserver.clicked.connect(self.stop_apollo_server_process)
+        srv_layout.addWidget(self.btn_stop_apolloserver)
 
-        # Stop Apollo Server Button (*serverapp*)
-        self.stop_apolloserver_btn = ctk.CTkButton(self.services_frame, text="Fechar ApolloServer (*serverapp*)", font=ctk.CTkFont(size=12, weight="bold"), fg_color="#d9534f", hover_color="#c9302c", command=self.stop_apollo_server_process)
-        self.stop_apolloserver_btn.grid(row=4, column=0, padx=15, pady=(5, 5), sticky="ew")
+        kill_group = QGroupBox("Fechar Processos Específicos (Regex / Nome)")
+        kill_layout = QHBoxLayout(kill_group)
+        self.linx_kill_pattern_entry = QLineEdit()
+        self.linx_kill_pattern_entry.setPlaceholderText("ex: wsContabil ou *serverapp*")
+        c = getattr(self, "app_config", {})
+        self.linx_kill_pattern_entry.setText(c.get("linx_kill_process_pattern", "wsContabil"))
 
-        # Custom Process Termination Section (Regex/Name, e.g. wsContabil)
-        kill_section_frame = ctk.CTkFrame(self.services_frame, fg_color="transparent")
-        kill_section_frame.grid(row=5, column=0, padx=15, pady=(5, 15), sticky="ew")
-        kill_section_frame.grid_columnconfigure(0, weight=1)
+        btn_stop_custom = QPushButton("Fechar")
+        btn_stop_custom.setFixedWidth(80)
+        btn_stop_custom.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold;")
+        btn_stop_custom.clicked.connect(self.stop_process_by_regex)
 
-        ctk.CTkLabel(kill_section_frame, text="Fechar Processos (Regex / Nome):", font=ctk.CTkFont(size=11, weight="bold"), anchor="w").grid(row=0, column=0, columnspan=2, pady=(0, 2), sticky="w")
+        kill_layout.addWidget(self.linx_kill_pattern_entry, 1)
+        kill_layout.addWidget(btn_stop_custom)
+        srv_layout.addWidget(kill_group)
 
-        self.linx_kill_pattern_entry = ctk.CTkEntry(kill_section_frame, placeholder_text="ex: wsContabil ou *serverapp*")
-        self.linx_kill_pattern_entry.grid(row=1, column=0, sticky="ew", padx=(0, 5))
-        self.linx_kill_pattern_entry.bind("<FocusOut>", lambda e: self.save_ui_to_config())
-        self.linx_kill_pattern_entry.bind("<Return>", lambda e: self.save_ui_to_config())
-
-        self.stop_custom_process_btn = ctk.CTkButton(kill_section_frame, text="Fechar", width=65, font=ctk.CTkFont(size=12, weight="bold"), fg_color="#d9534f", hover_color="#c9302c", command=self.stop_process_by_regex)
-        self.stop_custom_process_btn.grid(row=1, column=1)
-
+        left_layout.addWidget(srv_group)
 
         # Right Frame: Extraction & Installation Panel
-        self.update_action_frame = ctk.CTkFrame(tab)
-        self.update_action_frame.grid(row=0, column=1, padx=(5, 10), pady=10, sticky="nsew")
-        self.update_action_frame.grid_columnconfigure(0, weight=1)
-        self.update_action_frame.grid_rowconfigure(3, weight=1) # Console log takes remaining space
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
 
-        ctk.CTkLabel(self.update_action_frame, text="Descompactação & Atualização", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 2), sticky="w")
-        
-        # Info about destinations
-        dest_info = ctk.CTkFrame(self.update_action_frame)
-        dest_info.grid(row=1, column=0, padx=15, pady=5, sticky="ew")
-        dest_info.grid_columnconfigure(0, weight=1)
-        
-        self.dest_normal_lbl = ctk.CTkLabel(dest_info, text="Apollo/Atualiza: -", anchor="w", justify="left", font=ctk.CTkFont(size=11))
-        self.dest_normal_lbl.grid(row=0, column=0, padx=10, pady=2, sticky="w")
-        self.dest_server_lbl = ctk.CTkLabel(dest_info, text="3Camadas Server: -", anchor="w", justify="left", font=ctk.CTkFont(size=11))
-        self.dest_server_lbl.grid(row=1, column=0, padx=10, pady=2, sticky="w")
-        self.dest_client_lbl = ctk.CTkLabel(dest_info, text="3Camadas Client: -", anchor="w", justify="left", font=ctk.CTkFont(size=11))
-        self.dest_client_lbl.grid(row=2, column=0, padx=10, pady=2, sticky="w")
+        recap_group = QGroupBox("Diretórios de Destino Configurados")
+        recap_layout = QVBoxLayout(recap_group)
+        self.dest_normal_lbl = QLabel("Apollo/Atualiza: -")
+        self.dest_server_lbl = QLabel("3Camadas Server: -")
+        self.dest_client_lbl = QLabel("3Camadas Client: -")
+        self.dest_normal_lbl.setStyleSheet("color: #cdd6f4; font-size: 12px;")
+        self.dest_server_lbl.setStyleSheet("color: #cdd6f4; font-size: 12px;")
+        self.dest_client_lbl.setStyleSheet("color: #cdd6f4; font-size: 12px;")
 
-        # Command Section
-        run_frame = ctk.CTkFrame(self.update_action_frame, fg_color="transparent")
-        run_frame.grid(row=2, column=0, padx=15, pady=10, sticky="ew")
-        run_frame.grid_columnconfigure(0, weight=3)
-        run_frame.grid_columnconfigure(1, weight=1)
+        recap_layout.addWidget(self.dest_normal_lbl)
+        recap_layout.addWidget(self.dest_server_lbl)
+        recap_layout.addWidget(self.dest_client_lbl)
+        right_layout.addWidget(recap_group)
 
-        self.linx_start_update_btn = ctk.CTkButton(run_frame, text="Iniciar Atualização", font=ctk.CTkFont(size=14, weight="bold"), fg_color="#27ae60", hover_color="#2ecc71", height=38, command=self.start_linx_update_process)
-        self.linx_start_update_btn.grid(row=0, column=0, columnspan=2, sticky="ew")
+        self.linx_update_status_label = QLabel("Status: Pronto para aplicar atualização.")
+        self.linx_update_status_label.setStyleSheet("font-weight: bold; font-size: 12px; color: #89b4fa;")
 
-        # Text Console Log
-        self.linx_update_console_log = ctk.CTkTextbox(self.update_action_frame, height=200, font=ctk.CTkFont(family="monospace", size=11))
-        self.linx_update_console_log.grid(row=3, column=0, padx=15, pady=5, sticky="nsew")
-        self.linx_update_console_log.configure(state="disabled")
+        self.linx_update_progressbar = QProgressBar()
+        self.linx_update_progressbar.setRange(0, 100)
 
-        # Progress bar
-        self.linx_update_progressbar = ctk.CTkProgressBar(self.update_action_frame)
-        self.linx_update_progressbar.grid(row=4, column=0, padx=15, pady=(5, 5), sticky="ew")
-        self.linx_update_progressbar.set(0)
+        self.linx_update_log_box = QTextEdit()
+        self.linx_update_log_box.setReadOnly(True)
+        self.linx_update_log_box.setStyleSheet("font-family: monospace; font-size: 11px; background-color: #181825; color: #cdd6f4; border: 1px solid #45475a;")
 
-        self.linx_update_status_label = ctk.CTkLabel(self.update_action_frame, text="Pronto para atualizar.", anchor="w")
-        self.linx_update_status_label.grid(row=5, column=0, padx=15, pady=(0, 5), sticky="w")
+        self.btn_run_linx_update = QPushButton("🚀 Iniciar Atualização (Descompactar e Reiniciar Serviços)")
+        self.btn_run_linx_update.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; padding: 10px;")
+        self.btn_run_linx_update.clicked.connect(self.run_linx_update)
 
+        right_layout.addWidget(self.linx_update_status_label)
+        right_layout.addWidget(self.linx_update_progressbar)
+        right_layout.addWidget(self.linx_update_log_box, 1)
+        right_layout.addWidget(self.btn_run_linx_update)
+
+        layout.addWidget(scroll_left, 1)
+        layout.addWidget(right_widget, 1)
+
+        self.update_linx_paths_display()
+        self.build_services_ui()
+        self.refresh_linx_services()
 
     def build_services_ui(self):
-        # Clear existing rows first
-        for widget in self.services_list_container.winfo_children():
-            widget.destroy()
+        while self.services_grid.count():
+            item = self.services_grid.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
 
         self.service_status_labels.clear()
         self.service_action_buttons.clear()
 
-        # Load current configured service names
-        c = self.app_config
+        c = getattr(self, "app_config", {})
         services = [
             ("dfe", c.get("linx_service_dfe", "DFeServico")),
             ("datasnap", c.get("linx_service_datasnap", "RedirecionaDatasnap")),
@@ -280,52 +265,57 @@ class ApolloMixin:
         ]
 
         for i, (key, s_name) in enumerate(services):
-            # Display name label
-            lbl_name = ctk.CTkLabel(self.services_list_container, text=s_name, font=ctk.CTkFont(weight="bold", size=12), anchor="w")
-            lbl_name.grid(row=i, column=0, padx=5, pady=10, sticky="w")
+            lbl_name = QLabel(s_name)
+            lbl_name.setStyleSheet("font-weight: bold; color: #cdd6f4; font-size: 12px;")
 
-            # Status Badge Label
-            lbl_status = ctk.CTkLabel(self.services_list_container, text="CONSULTANDO...", font=ctk.CTkFont(size=10, weight="bold"), fg_color="#7f8c8d", text_color="white", corner_radius=6, height=24)
-            lbl_status.grid(row=i, column=1, padx=5, pady=10, sticky="ew")
+            lbl_status = QLabel("CONSULTANDO...")
+            lbl_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lbl_status.setStyleSheet("background-color: #7f8c8d; color: white; font-weight: bold; font-size: 11px; padding: 4px; border-radius: 4px;")
             self.service_status_labels[key] = lbl_status
 
-            # Toggle button
-            btn_action = ctk.CTkButton(self.services_list_container, text="...", width=70, font=ctk.CTkFont(size=11, weight="bold"), height=24)
-            btn_action.grid(row=i, column=2, padx=5, pady=10)
+            btn_action = QPushButton("...")
+            btn_action.setFixedWidth(80)
+            btn_action.setEnabled(False)
             self.service_action_buttons[key] = btn_action
 
+            self.services_grid.addWidget(lbl_name, i, 0)
+            self.services_grid.addWidget(lbl_status, i, 1)
+            self.services_grid.addWidget(btn_action, i, 2)
 
     def refresh_linx_services(self):
-        """Launches a background thread to check the status of all three services."""
+
         self.build_services_ui()
-        self.refresh_services_btn.configure(state="disabled", text="Consultando...")
-        for key, lbl in self.service_status_labels.items():
-            lbl.configure(text="CONSULTANDO...", fg_color="#7f8c8d")
-        for btn in self.service_action_buttons.values():
-            btn.configure(state="disabled", text="...")
-            
-        threading.Thread(target=self._refresh_services_thread, daemon=True).start()
+        if hasattr(self, "btn_refresh_services"):
+            self.btn_refresh_services.setEnabled(False)
+            self.btn_refresh_services.setText("Consultando...")
 
+        def _bg_thread():
+            c = getattr(self, "app_config", {})
+            services = {
+                "dfe": c.get("linx_service_dfe", "DFeServico"),
+                "datasnap": c.get("linx_service_datasnap", "RedirecionaDatasnap"),
+                "3camadas": c.get("linx_service_3camadas", "VerificaServer3Camadas"),
+                "integrador": c.get("linx_service_integrador", "dmLDIServer")
+            }
+            statuses = {}
+            for key, s_name in services.items():
+                statuses[key] = self.query_service_status(s_name)
 
-    def _refresh_services_thread(self):
-        c = self.app_config
-        services = {
-            "dfe": c.get("linx_service_dfe", "DFeServico"),
-            "datasnap": c.get("linx_service_datasnap", "RedirecionaDatasnap"),
-            "3camadas": c.get("linx_service_3camadas", "VerificaServer3Camadas"),
-            "integrador": c.get("linx_service_integrador", "dmLDIServer")
-        }
-        
-        statuses = {}
-        for key, s_name in services.items():
-            statuses[key] = self.query_service_status(s_name)
+            if hasattr(self, "linx_services_refreshed_signal"):
+                self.linx_services_refreshed_signal.emit(statuses)
+            else:
+                self.on_services_refreshed(statuses)
 
-        self.after(0, lambda: self.on_services_refreshed(statuses))
+        threading.Thread(target=_bg_thread, daemon=True).start()
 
+    def make_service_toggle_handler(self, key, action):
+        return lambda: self.trigger_service_toggle(key, action)
 
     def on_services_refreshed(self, statuses):
-        self.refresh_services_btn.configure(state="normal", text="Atualizar Status")
-        
+        if hasattr(self, "btn_refresh_services"):
+            self.btn_refresh_services.setEnabled(True)
+            self.btn_refresh_services.setText("🔄 Atualizar Status dos Serviços")
+
         for key, status_val in statuses.items():
             lbl = self.service_status_labels.get(key)
             btn = self.service_action_buttons.get(key)
@@ -333,57 +323,69 @@ class ApolloMixin:
                 continue
 
             if status_val == "ONLINE":
-                lbl.configure(text="ONLINE", fg_color="#27ae60")
-                btn.configure(state="normal", text="Parar", fg_color="#c0392b", hover_color="#e74c3c", 
-                              command=lambda k=key: self.trigger_service_toggle(k, "stop"))
+                lbl.setText("ONLINE")
+                lbl.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; font-size: 11px; padding: 4px; border-radius: 4px;")
+                btn.setEnabled(True)
+                btn.setText("Parar")
+                btn.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold;")
+                try:
+                    btn.disconnect()
+                except Exception:
+                    pass
+                btn.clicked.connect(self.make_service_toggle_handler(key, "stop"))
             elif status_val == "OFFLINE":
-                lbl.configure(text="OFFLINE", fg_color="#c0392b")
-                btn.configure(state="normal", text="Iniciar", fg_color="#27ae60", hover_color="#2ecc71", 
-                              command=lambda k=key: self.trigger_service_toggle(k, "start"))
-            elif status_val == "INDISPONIVEL":
-                lbl.configure(text="APENAS WINDOWS", fg_color="#7f8c8d")
-                btn.configure(state="disabled", text="Indisponível")
-            else:
-                lbl.configure(text="INEXISTENTE", fg_color="#7f8c8d")
-                btn.configure(state="disabled", text="-")
+                lbl.setText("OFFLINE")
+                lbl.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold; font-size: 11px; padding: 4px; border-radius: 4px;")
+                btn.setEnabled(True)
+                btn.setText("Iniciar")
+                btn.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;")
+                try:
+                    btn.disconnect()
+                except Exception:
+                    pass
+                btn.clicked.connect(self.make_service_toggle_handler(key, "start"))
 
+            elif status_val == "INDISPONIVEL":
+                lbl.setText("APENAS WINDOWS")
+                lbl.setStyleSheet("background-color: #7f8c8d; color: white; font-weight: bold; font-size: 11px; padding: 4px; border-radius: 4px;")
+                btn.setEnabled(False)
+                btn.setText("Indisponível")
+            else:
+                lbl.setText("INEXISTENTE")
+                lbl.setStyleSheet("background-color: #7f8c8d; color: white; font-weight: bold; font-size: 11px; padding: 4px; border-radius: 4px;")
+                btn.setEnabled(False)
+                btn.setText("-")
 
     def query_service_status(self, service_name):
-        if platform.system() != "Windows":
+        if getattr(self, "os_type", "Windows") != "Windows":
             return "INDISPONIVEL"
 
         import subprocess
         try:
-            # Query service using sc
             result = subprocess.run(
                 ["sc", "query", service_name],
                 capture_output=True,
                 text=True,
-                creationflags=0x08000000 # CREATE_NO_WINDOW
+                creationflags=0x08000000
             )
-            stdout = result.stdout or ""
-            stdout_upper = stdout.upper()
-            
-            # Suporta diferentes idiomas do Windows (Inglês: STATE, Português/Espanhol: ESTADO, Alemão: STATUS, etc.)
+            stdout_upper = (result.stdout or "").upper()
             has_state_info = any(term in stdout_upper for term in ["STATE", "ESTADO", "STATUS", "STATO", "ETAT"])
-            
+
             if has_state_info:
                 if "RUNNING" in stdout_upper or "4  RUNNING" in stdout_upper:
                     return "ONLINE"
                 elif "STOPPED" in stdout_upper or "1  STOPPED" in stdout_upper:
                     return "OFFLINE"
-            
-            # Validação caso o serviço não exista (erro 1060 em inglês/português)
+
             if "1060" in stdout_upper or "DOES NOT EXIST" in stdout_upper or "NAO EXISTE" in stdout_upper or "NÃO EXISTE" in stdout_upper:
                 return "INEXISTENTE"
-                
+
             return "OFFLINE"
         except Exception:
             return "DESCONHECIDO"
 
-
     def trigger_service_toggle(self, key, action):
-        c = self.app_config
+        c = getattr(self, "app_config", {})
         s_name = ""
         if key == "dfe":
             s_name = c.get("linx_service_dfe", "DFeServico")
@@ -397,348 +399,481 @@ class ApolloMixin:
         lbl = self.service_status_labels.get(key)
         btn = self.service_action_buttons.get(key)
         if lbl and btn:
-            lbl.configure(text="PROCESSANDO...", fg_color="#e67e22")
-            btn.configure(state="disabled", text="...")
+            lbl.setText("PROCESSANDO...")
+            lbl.setStyleSheet("background-color: #e67e22; color: white; font-weight: bold; font-size: 11px; padding: 4px; border-radius: 4px;")
+            btn.setEnabled(False)
 
-        threading.Thread(target=self._toggle_service_thread, args=(key, s_name, action), daemon=True).start()
+        def _toggle_thread():
+            if getattr(self, "os_type", "Windows") == "Windows":
+                import subprocess
+                try:
+                    subprocess.run(["sc", action, s_name], capture_output=True, text=True, creationflags=0x08000000)
+                    time.sleep(2.0)
+                except Exception:
+                    pass
+            else:
+                time.sleep(1.5)
 
+            statuses = {key: self.query_service_status(s_name)}
+            if hasattr(self, "linx_services_refreshed_signal"):
+                self.linx_services_refreshed_signal.emit(statuses)
+            else:
+                self.on_services_refreshed(statuses)
 
-    def _toggle_service_thread(self, key, s_name, action):
-        if platform.system() != "Windows":
-            # Simulate on Linux
-            import time
-            time.sleep(1.5)
-            self.mock_service_states[s_name] = "ONLINE" if action == "start" else "OFFLINE"
-        else:
-            import subprocess
-            # Use 'sc' or 'net' to start or stop service (elevated is best, but sc works)
-            try:
-                subprocess.run(
-                    ["sc", action, s_name],
-                    capture_output=True,
-                    text=True,
-                    creationflags=0x08000000
-                )
-                # Wait 2 seconds for state transition
-                import time
-                time.sleep(2.0)
-            except Exception:
-                pass
-        
-        # Query status again
-        status_val = self.query_service_status(s_name)
-        self.after(0, lambda: self.on_service_toggled(key, status_val))
-
-
-    def on_service_toggled(self, key, status_val):
-        # Refresh all service statuses
-        self.refresh_linx_services()
-
+        threading.Thread(target=_toggle_thread, daemon=True).start()
 
     def stop_apollo_server_process(self):
         def run_stop():
             try:
-                self.after(0, lambda: self.log_to_linx_update_console("Solicitação para encerrar processos do ApolloServer (*serverapp*)..."))
-                if platform.system() == "Windows":
+                self.log_linx_update("Solicitação para encerrar processos do ApolloServer (*serverapp*)...")
+                if getattr(self, "os_type", "Windows") == "Windows":
                     import subprocess
                     cmd = ["powershell", "-Command", "stop-process -name *serverapp* -Force"]
                     res = subprocess.run(cmd, capture_output=True, text=True, creationflags=0x08000000)
                     if res.returncode == 0:
-                        self.after(0, lambda: messagebox.showinfo("Sucesso", "Processos do ApolloServer (*serverapp*) encerrados com sucesso!"))
-                        self.after(0, lambda: self.log_to_linx_update_console("Processos do ApolloServer (*serverapp*) encerrados com sucesso."))
+                        msg = "Processos do ApolloServer (*serverapp*) encerrados com sucesso!"
+                        self.log_linx_update(msg)
+                        if hasattr(self, "show_info_dialog_signal"):
+                            self.show_info_dialog_signal.emit("Sucesso", msg)
                     else:
                         err_out = res.stderr.strip() or res.stdout.strip() or "Nenhum processo *serverapp* em execução."
-                        self.after(0, lambda: messagebox.showinfo("Informação", f"Resultado do comando ApolloServer:\n{err_out}"))
-                        self.after(0, lambda: self.log_to_linx_update_console(f"Resultado ApolloServer: {err_out}"))
+                        self.log_linx_update(f"Resultado ApolloServer: {err_out}")
+                        if hasattr(self, "show_info_dialog_signal"):
+                            self.show_info_dialog_signal.emit("Informação", f"Resultado ApolloServer:\n{err_out}")
                 else:
-                    self.after(0, lambda: messagebox.showinfo("Simulação (Linux)", "Comando executado (Simulado):\npowershell stop-process -name *serverapp*"))
-                    self.after(0, lambda: self.log_to_linx_update_console("[Linux SIMULADO] Comando enviado: powershell stop-process -name *serverapp*"))
+                    msg = "Comando enviado (Simulado): powershell stop-process -name *serverapp*"
+                    self.log_linx_update(msg)
+                    if hasattr(self, "show_info_dialog_signal"):
+                        self.show_info_dialog_signal.emit("Simulação (Linux)", msg)
             except Exception as e:
-                err_msg = str(e)
-                self.after(0, lambda: messagebox.showerror("Erro", f"Erro ao fechar ApolloServer:\n{err_msg}"))
-                self.after(0, lambda: self.log_to_linx_update_console(f"Erro ao fechar ApolloServer: {err_msg}"))
+                self.log_linx_update(f"Erro ao fechar ApolloServer: {e}")
+                if hasattr(self, "show_warning_dialog_signal"):
+                    self.show_warning_dialog_signal.emit("Erro", f"Erro ao fechar ApolloServer:\n{e}")
 
         threading.Thread(target=run_stop, daemon=True).start()
 
-
     def stop_process_by_regex(self, pattern=None):
+        if not pattern or not isinstance(pattern, str):
+            pattern = self.linx_kill_pattern_entry.text().strip() if hasattr(self, 'linx_kill_pattern_entry') else "wsContabil"
+
         if not pattern:
-            pattern = self.linx_kill_pattern_entry.get().strip() if hasattr(self, 'linx_kill_pattern_entry') else "wsContabil"
-        
-        if not pattern:
-            messagebox.showwarning("Aviso", "Por favor, informe o nome ou padrão Regex do processo a encerrar.")
+            QMessageBox.warning(self, "Aviso", "Por favor, informe o nome ou padrão Regex do processo a encerrar.")
             return
 
         def run_kill():
             try:
-                self.after(0, lambda: self.log_to_linx_update_console(f"Solicitação para encerrar processos via Regex/Nome: '{pattern}'..."))
-                if platform.system() == "Windows":
+                self.log_linx_update(f"Solicitação para encerrar processos via Regex/Nome: '{pattern}'...")
+                if getattr(self, "os_type", "Windows") == "Windows":
                     import subprocess
                     safe_pattern = pattern.replace("'", "''")
                     ps_cmd = f"Get-Process | Where-Object {{ $_.ProcessName -match '{safe_pattern}' -or $_.Name -like '*{safe_pattern}*' }} | Stop-Process -Force"
                     cmd = ["powershell", "-Command", ps_cmd]
                     res = subprocess.run(cmd, capture_output=True, text=True, creationflags=0x08000000)
                     if res.returncode == 0:
-                        self.after(0, lambda: messagebox.showinfo("Sucesso", f"Processo(s) correspondente(s) a '{pattern}' encerrado(s) com sucesso!"))
-                        self.after(0, lambda: self.log_to_linx_update_console(f"Processo(s) correspondente(s) a '{pattern}' encerrado(s) com sucesso."))
+                        msg = f"Processo(s) correspondente(s) a '{pattern}' encerrado(s) com sucesso!"
+                        self.log_linx_update(msg)
+                        if hasattr(self, "show_info_dialog_signal"):
+                            self.show_info_dialog_signal.emit("Sucesso", msg)
                     else:
                         err_out = res.stderr.strip() or res.stdout.strip() or f"Nenhum processo correspondente a '{pattern}' em execução."
-                        self.after(0, lambda: messagebox.showinfo("Informação", f"Resultado do encerramento ({pattern}):\n{err_out}"))
-                        self.after(0, lambda: self.log_to_linx_update_console(f"Resultado do encerramento ({pattern}): {err_out}"))
+                        self.log_linx_update(f"Resultado do encerramento ({pattern}): {err_out}")
+                        if hasattr(self, "show_info_dialog_signal"):
+                            self.show_info_dialog_signal.emit("Informação", f"Resultado do encerramento ({pattern}):\n{err_out}")
                 else:
-                    self.after(0, lambda: messagebox.showinfo("Simulação (Linux)", f"Comando executado (Simulado):\npowershell Get-Process | Where-Object {{ $_.ProcessName -match '{pattern}' }} | Stop-Process -Force"))
-                    self.after(0, lambda: self.log_to_linx_update_console(f"[Linux SIMULADO] Encerrando processos por padrão Regex: '{pattern}'"))
+                    msg = f"[Linux SIMULADO] Encerrando processos por padrão Regex: '{pattern}'"
+                    self.log_linx_update(msg)
+                    if hasattr(self, "show_info_dialog_signal"):
+                        self.show_info_dialog_signal.emit("Simulação (Linux)", msg)
             except Exception as e:
-                err_msg = str(e)
-                self.after(0, lambda: messagebox.showerror("Erro", f"Erro ao fechar processo ({pattern}):\n{err_msg}"))
-                self.after(0, lambda: self.log_to_linx_update_console(f"Erro ao fechar processo ({pattern}): {err_msg}"))
+                self.log_linx_update(f"Erro ao fechar processo ({pattern}): {e}")
+                if hasattr(self, "show_warning_dialog_signal"):
+                    self.show_warning_dialog_signal.emit("Erro", f"Erro ao fechar processo ({pattern}):\n{e}")
 
         threading.Thread(target=run_kill, daemon=True).start()
 
 
+    def setup_tab_linx_utilities(self):
+
+        tab = self.frame_linx_utilities
+        layout = QVBoxLayout(tab)
+
+        lbl = QLabel("Utilitários e Ferramentas Linx DMS")
+        lbl.setStyleSheet("font-size: 16px; font-weight: bold;")
+        layout.addWidget(lbl)
+
+        grid_group = QGroupBox("Ações Rápidas")
+        grid_layout = QGridLayout(grid_group)
+
+        btn_ext_clean = QPushButton("🧹 Limpeza de Arquivos por Regex / Extensão (Linx)")
+        btn_ext_clean.setStyleSheet("padding: 12px; font-weight: bold;")
+        btn_ext_clean.clicked.connect(lambda: self.open_extension_cleanup_popup("apollo"))
+
+        CTkToolTip(btn_ext_clean, "Abre a ferramenta de limpeza por extensão de arquivo no diretório Linx.")
+
+        btn_ps_reboot = QPushButton("⚡ Reinício Remoto de Servidor (Linx)")
+        btn_ps_reboot.setStyleSheet("padding: 12px; font-weight: bold;")
+        btn_ps_reboot.clicked.connect(lambda: self.open_powershell_restart_popup("apollo"))
+        CTkToolTip(btn_ps_reboot, "Envia o comando Restart-Computer via PowerShell.")
+
+        btn_open_apollo = QPushButton("📂 Abrir Pasta C:\\Apollo")
+        btn_open_apollo.setStyleSheet("padding: 12px;")
+        btn_open_apollo.clicked.connect(lambda: self.open_linx_folder("apollo"))
+
+        btn_open_3cam = QPushButton("📂 Abrir Pasta C:\\3camadas")
+        btn_open_3cam.setStyleSheet("padding: 12px;")
+        btn_open_3cam.clicked.connect(lambda: self.open_linx_folder("3camadas"))
+
+        grid_layout.addWidget(btn_ext_clean, 0, 0)
+        grid_layout.addWidget(btn_ps_reboot, 0, 1)
+        grid_layout.addWidget(btn_open_apollo, 1, 0)
+        grid_layout.addWidget(btn_open_3cam, 1, 1)
+
+        layout.addWidget(grid_group)
+        layout.addStretch(1)
+
     def setup_tab_linx_settings(self):
         tab = self.frame_linx_settings
-        tab.grid_columnconfigure(0, weight=1)
-        tab.grid_rowconfigure(0, weight=1)
-        tab.grid_rowconfigure(1, weight=0)
+        layout = QVBoxLayout(tab)
 
-        # Scrollable Settings Container
-        self.linx_settings_scroll = ctk.CTkScrollableFrame(tab, label_text="Editar Parâmetros Linx (config.json)")
-        self.linx_settings_scroll.grid(row=0, column=0, padx=15, pady=15, sticky="nsew")
-        self.linx_settings_scroll.grid_columnconfigure(0, weight=1)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll.setWidget(scroll_content)
 
-        ctk.CTkLabel(self.linx_settings_scroll, text="Templates de URL de Download (HTTP)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=10, pady=(10, 5), sticky="w")
-        
-        ctk.CTkLabel(self.linx_settings_scroll, text="Delphi (Download Padrão) URL Template:", anchor="w").grid(row=1, column=0, padx=10, pady=(5, 0), sticky="w")
-        self.linx_url_delphi_entry = ctk.CTkEntry(self.linx_settings_scroll, placeholder_text="https://...")
-        self.linx_url_delphi_entry.grid(row=2, column=0, padx=10, pady=2, sticky="ew")
+        # Templates Section
+        tmpl_group = QGroupBox("Templates de URLs de Download Linx")
+        tmpl_layout = QVBoxLayout(tmpl_group)
 
-        ctk.CTkLabel(self.linx_settings_scroll, text="3 Camadas - Server URL Template:", anchor="w").grid(row=3, column=0, padx=10, pady=(5, 0), sticky="w")
-        self.linx_url_server_entry = ctk.CTkEntry(self.linx_settings_scroll, placeholder_text="https://...")
-        self.linx_url_server_entry.grid(row=4, column=0, padx=10, pady=2, sticky="ew")
+        tmpl_layout.addWidget(QLabel("Linx Delphi Template:"))
+        self.linx_url_delphi_entry = QLineEdit()
+        tmpl_layout.addWidget(self.linx_url_delphi_entry)
 
-        ctk.CTkLabel(self.linx_settings_scroll, text="3 Camadas - Client URL Template:", anchor="w").grid(row=5, column=0, padx=10, pady=(5, 0), sticky="w")
-        self.linx_url_client_entry = ctk.CTkEntry(self.linx_settings_scroll, placeholder_text="https://...")
-        self.linx_url_client_entry.grid(row=6, column=0, padx=10, pady=2, sticky="ew")
+        tmpl_layout.addWidget(QLabel("3Camadas Server Template:"))
+        self.linx_url_server_entry = QLineEdit()
+        tmpl_layout.addWidget(self.linx_url_server_entry)
 
-        ctk.CTkLabel(self.linx_settings_scroll, text="Instalador Web URL Template:", anchor="w").grid(row=7, column=0, padx=10, pady=(5, 0), sticky="w")
-        self.linx_url_web_entry = ctk.CTkEntry(self.linx_settings_scroll, placeholder_text="https://...")
-        self.linx_url_web_entry.grid(row=8, column=0, padx=10, pady=2, sticky="ew")
+        tmpl_layout.addWidget(QLabel("3Camadas Client Template:"))
+        self.linx_url_client_entry = QLineEdit()
+        tmpl_layout.addWidget(self.linx_url_client_entry)
 
-        ctk.CTkLabel(self.linx_settings_scroll, text="Comissões Delphi URL Template:", anchor="w").grid(row=9, column=0, padx=10, pady=(5, 0), sticky="w")
-        self.linx_url_comissoes_delphi_entry = ctk.CTkEntry(self.linx_settings_scroll, placeholder_text="https://...")
-        self.linx_url_comissoes_delphi_entry.grid(row=10, column=0, padx=10, pady=2, sticky="ew")
+        tmpl_layout.addWidget(QLabel("3Camadas Web Template:"))
+        self.linx_url_web_entry = QLineEdit()
+        tmpl_layout.addWidget(self.linx_url_web_entry)
 
-        ctk.CTkLabel(self.linx_settings_scroll, text="Comissões Client URL Template:", anchor="w").grid(row=11, column=0, padx=10, pady=(5, 0), sticky="w")
-        self.linx_url_comissoes_client_entry = ctk.CTkEntry(self.linx_settings_scroll, placeholder_text="https://...")
-        self.linx_url_comissoes_client_entry.grid(row=12, column=0, padx=10, pady=2, sticky="ew")
+        tmpl_layout.addWidget(QLabel("Comissões Delphi Template:"))
+        self.linx_url_comissoes_delphi_entry = QLineEdit()
+        tmpl_layout.addWidget(self.linx_url_comissoes_delphi_entry)
 
-        ctk.CTkLabel(self.linx_settings_scroll, text="Apoio URL Template:", anchor="w").grid(row=13, column=0, padx=10, pady=(5, 0), sticky="w")
-        self.linx_url_apoio_entry = ctk.CTkEntry(self.linx_settings_scroll, placeholder_text="https://...")
-        self.linx_url_apoio_entry.grid(row=14, column=0, padx=10, pady=2, sticky="ew")
+        tmpl_layout.addWidget(QLabel("Comissões Client Template:"))
+        self.linx_url_comissoes_client_entry = QLineEdit()
+        tmpl_layout.addWidget(self.linx_url_comissoes_client_entry)
 
-        ctk.CTkLabel(self.linx_settings_scroll, text="Linx DMS Integrador URL Template:", anchor="w").grid(row=141, column=0, padx=10, pady=(5, 0), sticky="w")
-        self.linx_url_integrador_entry = ctk.CTkEntry(self.linx_settings_scroll, placeholder_text="https://...")
-        self.linx_url_integrador_entry.grid(row=142, column=0, padx=10, pady=2, sticky="ew")
+        tmpl_layout.addWidget(QLabel("Apoio Template:"))
+        self.linx_url_apoio_entry = QLineEdit()
+        tmpl_layout.addWidget(self.linx_url_apoio_entry)
 
-        # --- SECTION 2: SERVICES CONFIG ---
-        ctk.CTkLabel(self.linx_settings_scroll, text="Nomes de Serviços Windows", font=ctk.CTkFont(size=14, weight="bold")).grid(row=15, column=0, padx=10, pady=(15, 5), sticky="w")
+        tmpl_layout.addWidget(QLabel("Integrador Template:"))
+        self.linx_url_integrador_entry = QLineEdit()
+        tmpl_layout.addWidget(self.linx_url_integrador_entry)
 
-        ctk.CTkLabel(self.linx_settings_scroll, text="Serviço DFe (DFeServico):", anchor="w").grid(row=16, column=0, padx=10, pady=(5, 0), sticky="w")
-        self.linx_service_dfe_entry = ctk.CTkEntry(self.linx_settings_scroll, placeholder_text="DFeServico")
-        self.linx_service_dfe_entry.grid(row=17, column=0, padx=10, pady=2, sticky="ew")
-        self.linx_service_dfe_entry.bind("<FocusOut>", lambda e: self.save_ui_to_config())
-        self.linx_service_dfe_entry.bind("<Return>", lambda e: self.save_ui_to_config())
+        scroll_layout.addWidget(tmpl_group)
 
-        ctk.CTkLabel(self.linx_settings_scroll, text="Serviço DataSnap (RedirecionaDatasnap):", anchor="w").grid(row=18, column=0, padx=10, pady=(5, 0), sticky="w")
-        self.linx_service_datasnap_entry = ctk.CTkEntry(self.linx_settings_scroll, placeholder_text="RedirecionaDatasnap")
-        self.linx_service_datasnap_entry.grid(row=19, column=0, padx=10, pady=2, sticky="ew")
-        self.linx_service_datasnap_entry.bind("<FocusOut>", lambda e: self.save_ui_to_config())
-        self.linx_service_datasnap_entry.bind("<Return>", lambda e: self.save_ui_to_config())
+        # Services Section
+        srv_group = QGroupBox("Nomes dos Serviços Windows (Linx)")
+        srv_layout = QGridLayout(srv_group)
 
-        ctk.CTkLabel(self.linx_settings_scroll, text="Serviço 3 Camadas Server (VerificaServer3Camadas):", anchor="w").grid(row=20, column=0, padx=10, pady=(5, 0), sticky="w")
-        self.linx_service_3camadas_entry = ctk.CTkEntry(self.linx_settings_scroll, placeholder_text="VerificaServer3Camadas")
-        self.linx_service_3camadas_entry.grid(row=21, column=0, padx=10, pady=2, sticky="ew")
-        self.linx_service_3camadas_entry.bind("<FocusOut>", lambda e: self.save_ui_to_config())
-        self.linx_service_3camadas_entry.bind("<Return>", lambda e: self.save_ui_to_config())
+        srv_layout.addWidget(QLabel("Serviço DFe:"), 0, 0)
+        self.linx_service_dfe_entry = QLineEdit("DFeServico")
+        srv_layout.addWidget(self.linx_service_dfe_entry, 0, 1)
 
-        ctk.CTkLabel(self.linx_settings_scroll, text="Serviço Integrador (dmLDIServer):", anchor="w").grid(row=211, column=0, padx=10, pady=(5, 0), sticky="w")
-        self.linx_service_integrador_entry = ctk.CTkEntry(self.linx_settings_scroll, placeholder_text="dmLDIServer")
-        self.linx_service_integrador_entry.grid(row=212, column=0, padx=10, pady=2, sticky="ew")
-        self.linx_service_integrador_entry.bind("<FocusOut>", lambda e: self.save_ui_to_config())
-        self.linx_service_integrador_entry.bind("<Return>", lambda e: self.save_ui_to_config())
+        srv_layout.addWidget(QLabel("Serviço DataSnap:"), 0, 2)
+        self.linx_service_datasnap_entry = QLineEdit("RedirecionaDatasnap")
+        srv_layout.addWidget(self.linx_service_datasnap_entry, 0, 3)
 
-        # --- SECTION 3: DIRECTORIES CONFIG ---
-        ctk.CTkLabel(self.linx_settings_scroll, text="Diretórios de Atualização", font=ctk.CTkFont(size=14, weight="bold")).grid(row=22, column=0, padx=10, pady=(15, 5), sticky="w")
+        srv_layout.addWidget(QLabel("Serviço 3Camadas:"), 1, 0)
+        self.linx_service_3camadas_entry = QLineEdit("VerificaServer3Camadas")
+        srv_layout.addWidget(self.linx_service_3camadas_entry, 1, 1)
 
-        ctk.CTkLabel(self.linx_settings_scroll, text="Pasta Apollo/Atualiza (Arquivos Normais):", anchor="w").grid(row=23, column=0, padx=10, pady=(5, 0), sticky="w")
-        path_normal_frame = ctk.CTkFrame(self.linx_settings_scroll, fg_color="transparent")
-        path_normal_frame.grid(row=24, column=0, padx=10, pady=2, sticky="ew")
-        path_normal_frame.grid_columnconfigure(0, weight=1)
-        self.linx_path_normal_entry = ctk.CTkEntry(path_normal_frame)
-        self.linx_path_normal_entry.grid(row=0, column=0, sticky="ew")
-        self.linx_path_normal_entry.bind("<FocusOut>", lambda e: self.save_ui_to_config())
-        self.linx_path_normal_entry.bind("<Return>", lambda e: self.save_ui_to_config())
-        ctk.CTkButton(path_normal_frame, text="...", width=30, command=lambda: self.browse_directory(self.linx_path_normal_entry)).grid(row=0, column=1, padx=(5, 0))
+        srv_layout.addWidget(QLabel("Serviço Integrador:"), 1, 2)
+        self.linx_service_integrador_entry = QLineEdit("dmLDIServer")
+        srv_layout.addWidget(self.linx_service_integrador_entry, 1, 3)
 
-        ctk.CTkLabel(self.linx_settings_scroll, text="Pasta 3Camadas (Server 3 Camadas):", anchor="w").grid(row=25, column=0, padx=10, pady=(5, 0), sticky="w")
-        path_server_frame = ctk.CTkFrame(self.linx_settings_scroll, fg_color="transparent")
-        path_server_frame.grid(row=26, column=0, padx=10, pady=2, sticky="ew")
-        path_server_frame.grid_columnconfigure(0, weight=1)
-        self.linx_path_server_entry = ctk.CTkEntry(path_server_frame)
-        self.linx_path_server_entry.grid(row=0, column=0, sticky="ew")
-        self.linx_path_server_entry.bind("<FocusOut>", lambda e: self.save_ui_to_config())
-        self.linx_path_server_entry.bind("<Return>", lambda e: self.save_ui_to_config())
-        ctk.CTkButton(path_server_frame, text="...", width=30, command=lambda: self.browse_directory(self.linx_path_server_entry)).grid(row=0, column=1, padx=(5, 0))
+        srv_layout.addWidget(QLabel("Encerrar Processos (Pattern):"), 2, 0)
+        self.linx_kill_pattern_entry = QLineEdit("wsContabil")
+        srv_layout.addWidget(self.linx_kill_pattern_entry, 2, 1, 1, 3)
 
-        ctk.CTkLabel(self.linx_settings_scroll, text="Pasta 3Camadas/Atualiza (Client 3 Camadas):", anchor="w").grid(row=27, column=0, padx=10, pady=(5, 0), sticky="w")
-        path_client_frame = ctk.CTkFrame(self.linx_settings_scroll, fg_color="transparent")
-        path_client_frame.grid(row=28, column=0, padx=10, pady=2, sticky="ew")
-        path_client_frame.grid_columnconfigure(0, weight=1)
-        self.linx_path_client_entry = ctk.CTkEntry(path_client_frame)
-        self.linx_path_client_entry.grid(row=0, column=0, sticky="ew")
-        self.linx_path_client_entry.bind("<FocusOut>", lambda e: self.save_ui_to_config())
-        self.linx_path_client_entry.bind("<Return>", lambda e: self.save_ui_to_config())
-        ctk.CTkButton(path_client_frame, text="...", width=30, command=lambda: self.browse_directory(self.linx_path_client_entry)).grid(row=0, column=1, padx=(5, 0))
+        scroll_layout.addWidget(srv_group)
 
-        # --- SECTION 4: APPEARANCE CONFIG ---
-        ctk.CTkLabel(self.linx_settings_scroll, text="Aparência Visual", font=ctk.CTkFont(size=14, weight="bold")).grid(row=29, column=0, padx=10, pady=(15, 5), sticky="w")
-        self.linx_settings_appearance_menu = ctk.CTkOptionMenu(self.linx_settings_scroll, values=["Dark", "Light", "System"], command=lambda v: self.save_ui_to_config())
-        self.linx_settings_appearance_menu.grid(row=30, column=0, padx=10, pady=5, sticky="w")
+        # Target Paths Section
+        paths_group = QGroupBox("Diretórios de Destino Locais (Linx)")
+        paths_layout = QVBoxLayout(paths_group)
 
-        # Save Button Frame
-        save_frame = ctk.CTkFrame(tab, fg_color="transparent")
-        save_frame.grid(row=1, column=0, padx=15, pady=10, sticky="ew")
-        save_frame.grid_columnconfigure(0, weight=1)
+        p1_row = QHBoxLayout()
+        p1_row.addWidget(QLabel("Apollo/Atualiza:"))
+        self.linx_path_normal_entry = QLineEdit()
+        p1_row.addWidget(self.linx_path_normal_entry, 1)
+        paths_layout.addLayout(p1_row)
 
-        self.save_linx_settings_btn = ctk.CTkButton(save_frame, text="Salvar Configurações Linx", font=ctk.CTkFont(size=14, weight="bold"), height=40, command=self.save_settings_manually)
-        self.save_linx_settings_btn.grid(row=0, column=0, sticky="ew")
+        p2_row = QHBoxLayout()
+        p2_row.addWidget(QLabel("3Camadas Server:"))
+        self.linx_path_server_entry = QLineEdit()
+        p2_row.addWidget(self.linx_path_server_entry, 1)
+        paths_layout.addLayout(p2_row)
+
+        p3_row = QHBoxLayout()
+        p3_row.addWidget(QLabel("3Camadas Client:"))
+        self.linx_path_client_entry = QLineEdit()
+        p3_row.addWidget(self.linx_path_client_entry, 1)
+        paths_layout.addLayout(p3_row)
+
+        scroll_layout.addWidget(paths_group)
+
+        layout.addWidget(scroll, 1)
+
+        btn_save = QPushButton("Salvar Configurações Linx")
+        btn_save.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 12px; font-size: 14px;")
+        btn_save.clicked.connect(self.save_settings_manually)
+        layout.addWidget(btn_save)
+
+    def setup_tab_linx_about(self):
+        tab = self.frame_linx_about
+        layout = QVBoxLayout(tab)
+
+        info_group = QGroupBox("Informações do Desenvolvedor e Versão (Linx DMS)")
+        info_layout = QVBoxLayout(info_group)
+        details_text = (
+            "Desenvolvedor: Robson Santos\n"
+            "Contato: robsonshk@gmail.com\n"
+            "Versão do Programa: 2.0.0\n"
+            "Finalidade: Facilitar o download, descompactação, aplicação de atualizações e limpeza de arquivos do sistema Linx DMS."
+        )
+        lbl_info = QLabel(details_text)
+        lbl_info.setStyleSheet("font-size: 12px;")
+        info_layout.addWidget(lbl_info)
+        layout.addWidget(info_group)
+
+        lic_group = QGroupBox("🔒 Status do Licenciamento")
+        lic_layout = QVBoxLayout(lic_group)
+
+        lm = LicenseManager(app_name="AtualizadorSistemas")
+        lic = lm.load_license()
+
+        status_str = "🟢 Licença Ativa e Válida" if lic.get("is_valid") else "🔴 Licença Inativa / Não Validada"
+        empresa_str = lic.get("company_name", "Não informada")
+        validade_str = lic.get("valid_until", "Indefinida")
+        hwid_str = get_hwid()
+
+        self.lbl_linx_lic_status = QLabel(f"Status: {status_str}")
+        self.lbl_linx_lic_status.setStyleSheet("font-weight: bold;")
+        self.lbl_linx_lic_company = QLabel(f"Empresa: {empresa_str}")
+        self.lbl_linx_lic_validity = QLabel(f"Validade: {validade_str}")
+        self.lbl_linx_lic_hwid = QLabel(f"Hardware ID (HWID): {hwid_str}")
+        self.lbl_linx_lic_hwid.setStyleSheet("font-family: monospace; font-size: 10px; color: #aaa;")
+
+        btn_manage_lic = QPushButton("Gerenciar / Reativar Licença")
+        btn_manage_lic.setStyleSheet("padding: 6px; font-weight: bold;")
+        btn_manage_lic.clicked.connect(self.open_license_manager)
+
+        lic_layout.addWidget(self.lbl_linx_lic_status)
+        lic_layout.addWidget(self.lbl_linx_lic_company)
+        lic_layout.addWidget(self.lbl_linx_lic_validity)
+        lic_layout.addWidget(self.lbl_linx_lic_hwid)
+        lic_layout.addWidget(btn_manage_lic)
+
+        layout.addWidget(lic_group)
+
+        change_group = QGroupBox("Histórico de Alterações do Linx (Changelog)")
+        change_layout = QVBoxLayout(change_group)
+        txt_change = QTextEdit()
+        txt_change.setReadOnly(True)
+        txt_change.setText(CHANGELOG_APOLLO)
+        change_layout.addWidget(txt_change)
+        layout.addWidget(change_group, 1)
+
+    def setup_tab_linx_notes(self):
+        tab = self.frame_linx_notes
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(10)
+
+        lbl_title = QLabel("📝 Observações e Anotações da Máquina / Cliente (Linx DMS)")
+        lbl_title.setStyleSheet("font-size: 16px; font-weight: bold; color: #cdd6f4;")
+        lbl_subtitle = QLabel("Espaço livre para salvar anotações pertinentes à configuração desta máquina, IP de banco, particularidades, etc.")
+        lbl_subtitle.setStyleSheet("font-size: 12px; color: #a6adc8;")
+        layout.addWidget(lbl_title)
+        layout.addWidget(lbl_subtitle)
+
+        self.linx_notes_box = QTextEdit()
+        self.linx_notes_box.setReadOnly(False)
+        self.linx_notes_box.setPlaceholderText("Digite aqui suas observações sobre esta máquina ou cliente (Linx DMS)...")
+        self.linx_notes_box.setStyleSheet("font-family: sans-serif; font-size: 13px; background-color: #181825; color: #cdd6f4; border: 1px solid #45475a; padding: 8px;")
+
+        initial_notes = getattr(self, "app_config", {}).get("linx_notes", "")
+        if initial_notes:
+            self.linx_notes_box.setPlainText(initial_notes)
+
+        layout.addWidget(self.linx_notes_box, 1)
+
+        footer_layout = QHBoxLayout()
+        self.linx_notes_status_lbl = QLabel("")
+        self.linx_notes_status_lbl.setStyleSheet("font-size: 12px; color: #a6e3a1; font-weight: bold;")
+        footer_layout.addWidget(self.linx_notes_status_lbl, 1)
+
+        btn_save = QPushButton("💾 Salvar Observações")
+        btn_save.setStyleSheet("""
+            QPushButton {
+                background-color: #27ae60;
+                color: white;
+                font-size: 13px;
+                font-weight: bold;
+                padding: 8px 16px;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #2ecc71;
+            }
+        """)
+        btn_save.clicked.connect(self.save_linx_notes)
+        footer_layout.addWidget(btn_save)
+
+        layout.addLayout(footer_layout)
+
+    def save_linx_notes(self):
+        if hasattr(self, "linx_notes_box"):
+            notes_text = self.linx_notes_box.toPlainText()
+            self.app_config["linx_notes"] = notes_text
+            if config.save_config(self.app_config):
+                now_str = datetime.now().strftime("%H:%M:%S")
+                if hasattr(self, "linx_notes_status_lbl"):
+                    self.linx_notes_status_lbl.setText(f"✓ Observações salvas às {now_str}")
+                QMessageBox.information(self, "Sucesso", "Observações salvas com sucesso!")
+            else:
+                QMessageBox.warning(self, "Erro", "Não foi possível salvar as observações no arquivo de configuração.")
 
 
-    def log_to_linx_console(self, message):
-        """Append a message to the Linx log console and scroll to the bottom."""
-        self.linx_console_log.configure(state="normal")
-        self.linx_console_log.insert("end", f"[{datetime.now().strftime('%H:%M:%S')}] {message}\n")
-        self.linx_console_log.configure(state="disabled")
-        self.linx_console_log.see("end")
+    # ----------------- APOLLO THREAD LOGIC -----------------
+    def log_linx_dl(self, msg):
+        formatted = f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"
+        print(formatted, flush=True)
+        if hasattr(self, "linx_dl_log_signal"):
+            self.linx_dl_log_signal.emit(formatted)
+        elif hasattr(self, "linx_dl_log_box"):
+            self.log_linx_dl_ui(formatted)
 
+    def log_linx_dl_ui(self, formatted):
+        if hasattr(self, "linx_dl_log_box"):
+            self.linx_dl_log_box.append(formatted)
+            self.linx_dl_log_box.verticalScrollBar().setValue(self.linx_dl_log_box.verticalScrollBar().maximum())
 
-    def set_linx_download_inputs_state(self, state):
-        self.linx_package_menu.configure(state=state)
-        self.linx_version_entry.configure(state=state)
-        self.linx_path_entry.configure(state=state)
-        self.linx_dl_delphi_check.configure(state=state)
-        self.linx_dl_server_check.configure(state=state)
-        self.linx_dl_client_check.configure(state=state)
-        self.linx_dl_web_check.configure(state=state)
-        self.linx_dl_comissoes_check.configure(state=state)
-        self.linx_dl_apoio_trocafornec_check.configure(state=state)
-        self.linx_dl_apoio_trocaserie_check.configure(state=state)
-        self.linx_dl_apoio_verificadiaria_check.configure(state=state)
-        self.linx_dl_integrador_check.configure(state=state)
-        self.linx_backup_apollo_check.configure(state=state)
+    def status_linx_dl(self, msg):
+        if hasattr(self, "linx_dl_status_signal"):
+            self.linx_dl_status_signal.emit(msg)
+        elif hasattr(self, "linx_dl_status_label"):
+            self.status_linx_dl_ui(msg)
 
+    def status_linx_dl_ui(self, msg):
+        if hasattr(self, "linx_dl_status_label"):
+            self.linx_dl_status_label.setText(msg)
 
-    def show_linx_running_buttons(self):
-        self.linx_start_dl_btn.grid_forget()
-        self.linx_pause_dl_btn.grid(row=1, column=1, padx=10, pady=(5, 2), sticky="ew")
-        self.linx_cancel_dl_btn.grid(row=2, column=1, padx=10, pady=(2, 5), sticky="ew")
-        self.linx_pause_dl_btn.configure(text="Pausar")
+    def progress_linx_dl(self, val):
+        if hasattr(self, "linx_dl_progress_signal"):
+            self.linx_dl_progress_signal.emit(int(val))
+        elif hasattr(self, "linx_dl_progressbar"):
+            self.progress_linx_dl_ui(int(val))
 
+    def progress_linx_dl_ui(self, val):
+        if hasattr(self, "linx_dl_progressbar"):
+            self.linx_dl_progressbar.setValue(int(val))
 
-    def show_linx_idle_buttons(self):
-        self.linx_pause_dl_btn.grid_forget()
-        self.linx_cancel_dl_btn.grid_forget()
-        self.linx_start_dl_btn.grid(row=1, column=1, rowspan=2, padx=10, pady=5, sticky="nsew")
+    def on_linx_download_finished(self, success: bool, message: str):
+        if hasattr(self, "btn_run_linx_download"):
+            self.btn_run_linx_download.setEnabled(True)
+        if hasattr(self, "btn_pause_linx_download"):
+            self.btn_pause_linx_download.setEnabled(False)
+            self.btn_pause_linx_download.setText("Pausar")
+        if hasattr(self, "btn_cancel_linx_download"):
+            self.btn_cancel_linx_download.setEnabled(False)
 
+        if success:
+            QMessageBox.information(self, "Sucesso", message)
+        else:
+            QMessageBox.warning(self, "Download Finalizado", message)
+
+    def run_linx_download(self):
+        c = getattr(self, "app_config", {})
+        version = self.linx_version_entry.text().strip() if hasattr(self, "linx_version_entry") else ""
+        path = self.linx_path_entry.text().strip() if hasattr(self, "linx_path_entry") else ""
+
+        if not path:
+            default_p = "C:\\atualizacao" if getattr(self, "os_type", "Windows") == "Windows" else "./AtualizacaoLinx"
+            path = c.get("linx_download_path_win" if getattr(self, "os_type", "Windows") == "Windows" else "linx_download_path_linux", default_p)
+            if not path:
+                path = default_p
+            if hasattr(self, "linx_path_entry"):
+                self.linx_path_entry.setText(path)
+
+        if not version:
+            version = "5.19"
+            if hasattr(self, "linx_version_entry"):
+                self.linx_version_entry.setText(version)
+
+        self.save_ui_to_config()
+        self.linx_download_paused = False
+        self.linx_download_cancelled = False
+        self.btn_run_linx_download.setEnabled(False)
+        self.btn_pause_linx_download.setEnabled(True)
+        self.btn_cancel_linx_download.setEnabled(True)
+        self.linx_dl_log_box.clear()
+        self.linx_dl_progressbar.setValue(0)
+        self.status_linx_dl("Iniciando download do Linx...")
+
+        threading.Thread(target=self._linx_download_thread, daemon=True).start()
 
     def toggle_linx_pause_download(self):
-        if self.linx_download_paused:
+        if getattr(self, "linx_download_paused", False):
             self.linx_download_paused = False
-            self.linx_pause_dl_btn.configure(text="Pausar")
-            self.log_to_linx_console("Processo retomado.")
-            self.linx_dl_status_label.configure(text="Retomando download...")
+            self.btn_pause_linx_download.setText("Pausar")
+            self.log_linx_dl("Processo retomado.")
+            self.status_linx_dl("Retomando download...")
         else:
             self.linx_download_paused = True
-            self.linx_pause_dl_btn.configure(text="Retomar")
-            self.log_to_linx_console("Processo pausado. Aguardando...")
-            self.linx_dl_status_label.configure(text="Pausado.")
-
+            self.btn_pause_linx_download.setText("Retomar")
+            self.log_linx_dl("Processo pausado. Aguardando...")
+            self.status_linx_dl("Pausado.")
 
     def cancel_linx_download(self):
         self.linx_download_cancelled = True
         self.linx_download_paused = False
-        self.log_to_linx_console("Solicitação de cancelamento enviada. Aguardando...")
-        self.linx_dl_status_label.configure(text="Cancelando...")
+        self.log_linx_dl("Solicitação de cancelamento enviada. Aguardando...")
+        self.status_linx_dl("Cancelando...")
 
-
-    def start_linx_download_process(self):
-        # Save state
-        self.save_ui_to_config()
-
-        # Validations
-        package = self.linx_package_menu.get()
-        version = self.linx_version_entry.get().strip()
-        path = self.linx_path_entry.get().strip()
-
-        if not version:
-            messagebox.showerror("Erro", "Por favor, digite a versão desejada (ex: v5.19).")
-            return
-        if not path:
-            messagebox.showerror("Erro", "Por favor, digite ou selecione o diretório de destino.")
-            return
-
-        # Check if at least one checkbox is checked
-        if not (self.linx_dl_delphi_var.get() or self.linx_dl_server_var.get() or 
-                self.linx_dl_client_var.get() or self.linx_dl_web_var.get() or
-                self.linx_dl_comissoes_var.get() or self.linx_dl_apoio_trocafornec_var.get() or
-                self.linx_dl_apoio_trocaserie_var.get() or self.linx_dl_apoio_verificadiaria_var.get()):
-            messagebox.showerror("Erro", "Selecione pelo menos uma opção de download.")
-            return
-
-        # Setup state
-        self.linx_download_paused = False
-        self.linx_download_cancelled = False
-        self.linx_current_downloading_file = None
-
-        # Lock UI
-        self.set_navigation_state("disabled")
-        self.set_linx_download_inputs_state("disabled")
-        self.show_linx_running_buttons()
-
-        self.linx_console_log.configure(state="normal")
-        self.linx_console_log.delete("1.0", "end")
-        self.linx_console_log.configure(state="disabled")
-        self.linx_dl_progressbar.set(0)
-
-        # Launch Thread
-        threading.Thread(target=self._linx_download_process_thread, args=(package, version, path), daemon=True).start()
-
-
-    def _linx_download_process_thread(self, package, version, path):
-        def log(msg):
-            self.after(0, lambda: self.log_to_linx_console(msg))
-        def status(txt):
-            self.after(0, lambda: self.linx_dl_status_label.configure(text=txt))
+    def _linx_download_thread(self):
+        log = self.log_linx_dl
+        status = self.status_linx_dl
 
         def check_pause_cancel():
-            import time
-            while self.linx_download_paused:
+            while getattr(self, "linx_download_paused", False):
                 time.sleep(0.1)
-                if self.linx_download_cancelled:
+                if getattr(self, "linx_download_cancelled", False):
                     raise Exception("Processo cancelado pelo usuário.")
-            if self.linx_download_cancelled:
+            if getattr(self, "linx_download_cancelled", False):
                 raise Exception("Processo cancelado pelo usuário.")
 
-        def progress_callback(dl_bytes, total_bytes):
-            check_pause_cancel()
-            if total_bytes > 0:
-                pct = dl_bytes / total_bytes
-                self.after(0, lambda: self.linx_dl_progressbar.set(pct))
-
         try:
-            # Prepend 'v' to version automatically if missing
-            version_with_v = version if version.startswith("v") else "v" + version
+            c = self.app_config
+            package = self.linx_package_menu.currentText().strip()
+            version = self.linx_version_entry.text().strip()
+            path = self.linx_path_entry.text().strip()
+
+            if not version or not path:
+                log("Erro: Versão e pasta de destino são obrigatórias.")
+                status("Erro: preencha os parâmetros.")
+                if hasattr(self, "linx_dl_finished_signal"):
+                    self.linx_dl_finished_signal.emit(False, "Preencha a versão e a pasta de destino.")
+                return
+
+            version_with_v = version if version.lower().startswith("v") else "v" + version
 
             log("--- INICIANDO PROCESSO DOWNLOAD LINX ---")
             log(f"Pacote selecionado: {package}")
@@ -746,79 +881,96 @@ class ApolloMixin:
             log(f"Pasta de downloads: {os.path.abspath(path)}")
             os.makedirs(path, exist_ok=True)
 
-            c = self.app_config
             downloads_to_make = []
 
-            # Add tasks based on variables
-            if self.linx_dl_delphi_var.get():
-                template = c.get("linx_url_delphi_template", "").strip() or config.DEFAULT_CONFIG["linx_url_delphi_template"]
-                url = template.replace("{package}", package).replace("{version}", version_with_v)
+            # 1. Delphi (Padrão)
+            if self.linx_dl_delphi_var.isChecked():
+                tmpl = c.get("linx_url_delphi_template", "").strip() or config.DEFAULT_CONFIG["linx_url_delphi_template"]
+                url = tmpl.replace("{package}", package).replace("{version}", version_with_v)
                 filename = f"DVI_Pacote_Evolutivo_{package}_{version_with_v}.zip"
                 downloads_to_make.append(("Delphi (Padrão)", url, filename))
 
-            if self.linx_dl_server_var.get():
-                template = c.get("linx_url_server_template", "").strip() or config.DEFAULT_CONFIG["linx_url_server_template"]
-                url = template.replace("{package}", package).replace("{version}", version_with_v)
+            # 2. 3 Camadas Server
+            if self.linx_dl_server_var.isChecked():
+                tmpl = c.get("linx_url_server_template", "").strip() or config.DEFAULT_CONFIG["linx_url_server_template"]
+                url = tmpl.replace("{package}", package).replace("{version}", version_with_v)
                 filename = f"DVI_Pacote_Evolutivo_{package}_{version_with_v}_3Camadas_Server.zip"
                 downloads_to_make.append(("3 Camadas Server", url, filename))
 
-            if self.linx_dl_client_var.get():
-                template = c.get("linx_url_client_template", "").strip() or config.DEFAULT_CONFIG["linx_url_client_template"]
-                url = template.replace("{package}", package).replace("{version}", version_with_v)
+            # 3. 3 Camadas Client
+            if self.linx_dl_client_var.isChecked():
+                tmpl = c.get("linx_url_client_template", "").strip() or config.DEFAULT_CONFIG["linx_url_client_template"]
+                url = tmpl.replace("{package}", package).replace("{version}", version_with_v)
                 filename = f"DVI_Pacote_Evolutivo_{package}_{version_with_v}_3Camadas_Client.zip"
                 downloads_to_make.append(("3 Camadas Client", url, filename))
 
-            if self.linx_dl_web_var.get():
-                template = c.get("linx_url_web_template", "").strip() or config.DEFAULT_CONFIG["linx_url_web_template"]
-                url = template.replace("{package}", package).replace("{version}", version_with_v)
+            # 4. Instalador Web
+            if self.linx_dl_web_var.isChecked():
+                tmpl = c.get("linx_url_web_template", "").strip() or config.DEFAULT_CONFIG["linx_url_web_template"]
+                url = tmpl.replace("{package}", package).replace("{version}", version_with_v)
                 filename = "LinxDMS.zip"
                 downloads_to_make.append(("Instalador Web", url, filename))
 
-            if self.linx_dl_integrador_var.get():
-                template = c.get("linx_url_integrador_template", "").strip() or config.DEFAULT_CONFIG["linx_url_integrador_template"]
-                url = template.replace("{package}", package).replace("{version}", version_with_v)
+            # 5. Linx Integrador
+            if self.linx_dl_integrador_var.isChecked():
+                tmpl = c.get("linx_url_integrador_template", "").strip() or config.DEFAULT_CONFIG["linx_url_integrador_template"]
+                url = tmpl.replace("{package}", package).replace("{version}", version_with_v)
                 filename = "LinxDMSIntegrador.zip"
                 downloads_to_make.append(("Linx DMS Integrador", url, filename))
 
-            # Add Comissões downloads if selected
-            if self.linx_dl_comissoes_var.get():
-                if self.linx_dl_delphi_var.get():
-                    template = c.get("linx_url_comissoes_delphi_template", "").strip() or config.DEFAULT_CONFIG["linx_url_comissoes_delphi_template"]
-                    url = template.replace("{version}", version_with_v)
+            # 6. Comissões
+            if self.linx_dl_comissoes_var.isChecked():
+                if self.linx_dl_delphi_var.isChecked():
+                    tmpl = c.get("linx_url_comissoes_delphi_template", "").strip() or config.DEFAULT_CONFIG["linx_url_comissoes_delphi_template"]
+                    url = tmpl.replace("{version}", version_with_v)
                     downloads_to_make.append(("Comissões Delphi", url, "LinxDMSComissoes.zip"))
-                if self.linx_dl_client_var.get():
-                    template = c.get("linx_url_comissoes_client_template", "").strip() or config.DEFAULT_CONFIG["linx_url_comissoes_client_template"]
-                    url = template.replace("{version}", version_with_v)
+                if self.linx_dl_client_var.isChecked():
+                    tmpl = c.get("linx_url_comissoes_client_template", "").strip() or config.DEFAULT_CONFIG["linx_url_comissoes_client_template"]
+                    url = tmpl.replace("{version}", version_with_v)
                     downloads_to_make.append(("Comissões Client", url, "LinxDMSComissoesClient.zip"))
-                if self.linx_dl_server_var.get():
+                if self.linx_dl_server_var.isChecked():
                     log("Aviso: Comissões não possui pacote de Server. Ignorando download Server para Comissões.")
 
-            # Add Apoio downloads if selected
+            # 7. Apoio
             apoio_modules = []
-            if self.linx_dl_apoio_trocafornec_var.get():
+            if self.linx_dl_apoio_trocafornec_var.isChecked():
                 apoio_modules.append(("Troca Fornecedor", "TrocaFornec"))
-            if self.linx_dl_apoio_trocaserie_var.get():
+            if self.linx_dl_apoio_trocaserie_var.isChecked():
                 apoio_modules.append(("Troca Série Transmissão", "TrocaSerieTran"))
-            if self.linx_dl_apoio_verificadiaria_var.get():
+            if self.linx_dl_apoio_verificadiaria_var.isChecked():
                 apoio_modules.append(("Verifica Composição Diária", "VerificaComposicaoDiaria"))
 
             for label, base_filename in apoio_modules:
-                template = c.get("linx_url_apoio_template", "").strip() or config.DEFAULT_CONFIG["linx_url_apoio_template"]
-                if self.linx_dl_delphi_var.get():
-                    url = template.replace("{version}", version_with_v).replace("{filename}", base_filename)
+                tmpl = c.get("linx_url_apoio_template", "").strip() or config.DEFAULT_CONFIG["linx_url_apoio_template"]
+                if self.linx_dl_delphi_var.isChecked():
+                    url = tmpl.replace("{version}", version_with_v).replace("{filename}", base_filename)
                     downloads_to_make.append((f"{label} Delphi", url, f"{base_filename}.zip"))
-                if self.linx_dl_client_var.get():
+                if self.linx_dl_client_var.isChecked():
                     client_filename = f"{base_filename}Client"
-                    url = template.replace("{version}", version_with_v).replace("{filename}", client_filename)
+                    url = tmpl.replace("{version}", version_with_v).replace("{filename}", client_filename)
                     downloads_to_make.append((f"{label} Client", url, f"{client_filename}.zip"))
-                if self.linx_dl_server_var.get():
+                if self.linx_dl_server_var.isChecked():
                     log(f"Aviso: {label} não possui pacote de Server. Ignorando download Server para {label}.")
 
-            def create_progress_callback(filename_display):
+            if not downloads_to_make:
+                log("Aviso: Nenhuma opção de download válida foi selecionada.")
+                status("Selecione pelo menos um pacote para download.")
+                if hasattr(self, "linx_dl_finished_signal"):
+                    self.linx_dl_finished_signal.emit(False, "Selecione pelo menos um pacote para download.")
+                return
+
+            total_items = len(downloads_to_make)
+            for idx, (label, url, filename) in enumerate(downloads_to_make):
+                check_pause_cancel()
+                dest_file = os.path.join(path, filename)
+                log(f"Baixando ({idx+1}/{total_items}) {label}...")
+                log(f"URL: {url}")
+                status(f"Baixando [{idx+1}/{total_items}]: {filename}...")
+
                 start_t = time.time()
                 last_u = 0
 
-                def file_progress_cb(dl_bytes, total_bytes):
+                def progress_cb(dl_bytes, total_bytes):
                     nonlocal last_u
                     check_pause_cancel()
                     now = time.time()
@@ -826,718 +978,276 @@ class ApolloMixin:
                         last_u = now
                         elapsed = max(now - start_t, 0.001)
                         speed = dl_bytes / elapsed
-
-                        if speed >= 1024 * 1024:
-                            speed_str = f"{speed / (1024 * 1024):.2f} MB/s"
-                        elif speed >= 1024:
-                            speed_str = f"{speed / 1024:.1f} KB/s"
-                        else:
-                            speed_str = f"{speed:.0f} B/s"
+                        speed_str = f"{speed / (1024*1024):.2f} MB/s" if speed >= 1024*1024 else (f"{speed / 1024:.1f} KB/s" if speed >= 1024 else f"{speed:.0f} B/s")
 
                         if total_bytes > 0:
                             pct = dl_bytes / total_bytes
-                            pct_str = f"{pct * 100:.1f}%"
-                            self.after(0, lambda p=pct: self.linx_dl_progressbar.set(p))
-                        else:
-                            pct_str = "..."
+                            item_progress = (idx + pct) / total_items
+                            self.progress_linx_dl(int(item_progress * 100))
+                            self.status_linx_dl(f"Baixando {filename} - {pct*100:.1f}% ({speed_str})")
 
-                        status_text = f"Baixando {filename_display} - {pct_str} ({speed_str})"
-                        self.after(0, lambda t=status_text: self.linx_dl_status_label.configure(text=t))
+                utils.download_http_file(url, dest_file, progress_callback=progress_cb, check_pause_cancel=check_pause_cancel)
+                log(f"Concluído: {filename}")
 
-                return file_progress_cb
-
-            success_count = 0
-            for label, url, filename in downloads_to_make:
-                check_pause_cancel()
-                dest_file = os.path.join(path, filename)
-                log(f"Baixando {label}...")
-                log(f"URL: {url}")
-                status(f"Baixando {filename}...")
-                self.after(0, lambda: self.linx_dl_progressbar.set(0))
-
-                file_cb = create_progress_callback(filename)
-                self.linx_current_downloading_file = dest_file
-                utils.download_http_file(url, dest_file, file_cb, check_pause_cancel)
-                self.linx_current_downloading_file = None
-
-                log(f"Download concluído: {filename}")
-                self.after(0, lambda: self.linx_dl_progressbar.set(1.0))
-                success_count += 1
-
-            status("Download Linx Concluído.")
-            log(f"Sucesso! {success_count} de {len(downloads_to_make)} downloads concluídos.")
-            self.after(0, lambda: messagebox.showinfo("Sucesso", f"Processo finalizado com sucesso! {success_count} arquivos baixados em:\n{path}"))
+            status("Processo de download Linx finalizado com sucesso!")
+            log("--- DOWNLOADS DO LINX CONCLUÍDOS COM SUCESSO ---")
+            if hasattr(self, "linx_dl_finished_signal"):
+                self.linx_dl_finished_signal.emit(True, "Processo de download Linx finalizado com sucesso!")
 
         except Exception as e:
-            status("Processo interrompido.")
-            err_msg = str(e)
-            log(f"ERRO: {err_msg}")
-            self.after(0, lambda: messagebox.showerror("Erro", f"Processo interrompido devido a erro:\n{err_msg}"))
-
-        finally:
-            self.after(0, lambda: self.set_navigation_state("normal"))
-            self.after(0, lambda: self.set_linx_download_inputs_state("normal"))
-            self.after(0, lambda: self.show_linx_idle_buttons())
+            log(f"ERRO durante download do Linx: {e}")
+            status("Erro durante o download.")
+            if hasattr(self, "linx_dl_finished_signal"):
+                self.linx_dl_finished_signal.emit(False, str(e))
 
 
-    def start_linx_update_process(self):
-        if self.linx_updating:
-            return
-        
-        # Save config
+
+    def log_linx_update(self, msg):
+        formatted = f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"
+        print(formatted, flush=True)
+        if hasattr(self, "linx_update_log_signal"):
+            self.linx_update_log_signal.emit(formatted)
+        elif hasattr(self, "linx_update_log_box"):
+            self.log_linx_update_ui(formatted)
+
+    def log_linx_update_ui(self, formatted):
+        if hasattr(self, "linx_update_log_box"):
+            self.linx_update_log_box.append(formatted)
+            self.linx_update_log_box.verticalScrollBar().setValue(self.linx_update_log_box.verticalScrollBar().maximum())
+
+    def status_linx_update(self, msg):
+        if hasattr(self, "linx_update_status_signal"):
+            self.linx_update_status_signal.emit(msg)
+        elif hasattr(self, "linx_update_status_label"):
+            self.status_linx_update_ui(msg)
+
+    def status_linx_update_ui(self, msg):
+        if hasattr(self, "linx_update_status_label"):
+            self.linx_update_status_label.setText(msg)
+
+    def progress_linx_update(self, val):
+        if hasattr(self, "linx_update_progress_signal"):
+            self.linx_update_progress_signal.emit(int(val))
+        elif hasattr(self, "linx_update_progressbar"):
+            self.progress_linx_update_ui(int(val))
+
+    def progress_linx_update_ui(self, val):
+        if hasattr(self, "linx_update_progressbar"):
+            self.linx_update_progressbar.setValue(int(val))
+
+    def on_linx_update_finished(self, success: bool, message: str):
+        if hasattr(self, "btn_run_linx_update"):
+            self.btn_run_linx_update.setEnabled(True)
+        if hasattr(self, "refresh_linx_services"):
+            self.refresh_linx_services()
+        if success:
+            QMessageBox.information(self, "Sucesso", message)
+        else:
+            QMessageBox.warning(self, "Atualização Finalizada", message)
+
+    def run_linx_update(self):
+        c = getattr(self, "app_config", {})
+        download_dir = self.linx_path_entry.text().strip() if hasattr(self, "linx_path_entry") else ""
+        if not download_dir:
+            default_p = "C:\\atualizacao" if getattr(self, "os_type", "Windows") == "Windows" else "./AtualizacaoLinx"
+            download_dir = c.get("linx_download_path_win" if getattr(self, "os_type", "Windows") == "Windows" else "linx_download_path_linux", default_p)
+            if not download_dir:
+                download_dir = default_p
+            if hasattr(self, "linx_path_entry"):
+                self.linx_path_entry.setText(download_dir)
+
         self.save_ui_to_config()
+        if hasattr(self, "btn_run_linx_update"):
+            self.btn_run_linx_update.setEnabled(False)
+        if hasattr(self, "linx_update_log_box"):
+            self.linx_update_log_box.clear()
+        if hasattr(self, "linx_update_progressbar"):
+            self.linx_update_progressbar.setValue(0)
 
-        self.linx_updating = True
-        self.linx_update_cancelled = False
-        
-        # Lock navigation
-        self.set_navigation_state("disabled")
-        self.linx_start_update_btn.configure(state="disabled", text="Atualizando...")
-        
-        self.linx_update_console_log.configure(state="normal")
-        self.linx_update_console_log.delete("1.0", "end")
-        self.linx_update_console_log.configure(state="disabled")
-        self.linx_update_progressbar.set(0)
+        self.status_linx_update("Iniciando aplicação de atualizações...")
+        threading.Thread(target=self._linx_update_thread, daemon=True).start()
 
-        # Launch Thread
-        threading.Thread(target=self._linx_update_process_thread, daemon=True).start()
-
-
-    def _linx_update_process_thread(self):
-        import zipfile
-        
-        def log(msg):
-            self.after(0, lambda: self.log_to_linx_update_console(msg))
-        def status(txt):
-            self.after(0, lambda: self.linx_update_status_label.configure(text=txt))
-        def progress(val):
-            self.after(0, lambda: self.linx_update_progressbar.set(val))
+    def _linx_update_thread(self):
+        log = self.log_linx_update
+        status = self.status_linx_update
 
         try:
-            c = self.app_config
-            download_dir = self.linx_path_entry.get().strip()
-            
-            # Paths destinations
-            dest_normal = c.get("linx_path_normal_win", "C:\\Apollo\\Atualiza") if self.os_type == "Windows" else c.get("linx_path_normal_linux", "./Apollo_Atualiza")
-            dest_server = c.get("linx_path_server_win", "C:\\3Camadas") if self.os_type == "Windows" else c.get("linx_path_server_linux", "./3Camadas")
-            dest_client = c.get("linx_path_client_win", "C:\\3Camadas\\Atualiza") if self.os_type == "Windows" else c.get("linx_path_client_linux", "./3Camadas_Atualiza")
+            c = getattr(self, "app_config", {})
+            download_dir = self.linx_path_entry.text().strip() if hasattr(self, "linx_path_entry") else "C:\\atualizacao"
 
-            log("--- INICIANDO PROCESSO DE ATUALIZAÇÃO LINX ---")
-            log(f"Pasta de downloads de origem: {os.path.abspath(download_dir)}")
-            log(f"Destino Delphi/Normais: {os.path.abspath(dest_normal)}")
-            log(f"Destino 3 Camadas Server: {os.path.abspath(dest_server)}")
-            log(f"Destino 3 Camadas Client: {os.path.abspath(dest_client)}")
+            dest_normal = c.get("linx_path_normal_win", "C:\\Apollo\\Atualiza") if getattr(self, "os_type", "Windows") == "Windows" else c.get("linx_path_normal_linux", "./Apollo_Atualiza")
+            dest_server = c.get("linx_path_server_win", "C:\\3Camadas") if getattr(self, "os_type", "Windows") == "Windows" else c.get("linx_path_server_linux", "./3Camadas")
+            dest_client = c.get("linx_path_client_win", "C:\\3Camadas\\Atualiza") if getattr(self, "os_type", "Windows") == "Windows" else c.get("linx_path_client_linux", "./3Camadas_Atualiza")
+
+            log("--- INICIANDO ATUALIZAÇÃO DO LINX DMS ---")
+            log(f"Pasta de Origem (Zip): {os.path.abspath(download_dir)}")
+            log(f"Destino Apollo/Atualiza (Delphi): {os.path.abspath(dest_normal)}")
+            log(f"Destino 3Camadas Server: {os.path.abspath(dest_server)}")
+            log(f"Destino 3Camadas Client: {os.path.abspath(dest_client)}")
 
             if not os.path.exists(download_dir):
-                raise Exception(f"Diretório de downloads de origem não existe: {download_dir}")
-
-            # Scan files
-            zip_files = [f for f in os.listdir(download_dir) if f.lower().endswith(".zip")]
-            if not zip_files:
-                log("Nenhum arquivo .zip encontrado na pasta de download.")
-                status("Nenhum arquivo zip para atualizar.")
-                progress(1.0)
+                log(f"Erro: A pasta de origem '{download_dir}' não existe.")
+                status("Pasta de origem não encontrada.")
+                if hasattr(self, "linx_update_finished_signal"):
+                    self.linx_update_finished_signal.emit(False, f"Pasta de origem não encontrada: {download_dir}")
                 return
 
+            zip_files = [f for f in os.listdir(download_dir) if f.lower().endswith(".zip")]
             total_zips = len(zip_files)
+
+            if not zip_files:
+                log(f"Aviso: Nenhum arquivo .zip encontrado na pasta '{download_dir}'.")
+                status("Nenhum zip para descompactar.")
+                if hasattr(self, "linx_update_finished_signal"):
+                    self.linx_update_finished_signal.emit(True, "Nenhum arquivo zip para descompactar.")
+                return
+
             log(f"Encontrados {total_zips} arquivos .zip para processar.")
 
-            # Encerrar processos em execução (ex: wsContabil) para evitar bloqueio de arquivos
-            kill_pat = c.get("linx_kill_process_pattern", "wsContabil").strip()
-            if kill_pat:
-                log(f"Verificando e encerrando processos ativos correspondentes a '{kill_pat}'...")
-                self.stop_process_by_regex(kill_pat)
+            # 1. Backup automático da pasta Apollo/Atualiza (Compressão Máxima)
+            if c.get("linx_backup_apollo", True):
+                status("Fazendo backup do Apollo (Compressão Máxima)...")
+                log("--- INICIANDO BACKUP MÁXIMO DA PASTA APOLLO/ATUALIZA ---")
+                backup_zip = utils.make_apollo_backup(dest_normal, log_callback=log)
+                if backup_zip:
+                    c["last_apollo_backup_zip"] = backup_zip
+                    config.save_config(c)
 
-            # Realiza backup dos executáveis e DLLs da pasta C:\Apollo\atualiza somente antes da descompactação
-            new_apollo_backup_zip_path = None
-            if c.get("linx_backup_apollo", False):
-                status("Fazendo backup do Apollo (EXE/DLL)...")
-                log("\n--- INICIANDO BACKUP AUTOMÁTICO DO APOLLO (EXE E DLL) ---")
-                parent_apollo = os.path.dirname(dest_normal.rstrip("\\/"))
-                date_str = datetime.now().strftime("%d%m%Y_%H%M%S")
-                backup_folder_name = f"backup_{date_str}"
-                backup_dir = os.path.join(parent_apollo if parent_apollo else dest_normal, backup_folder_name)
-                log(f"Diretório Apollo (origem): {os.path.abspath(dest_normal)}")
-                log(f"Diretório de backup (destino): {os.path.abspath(backup_dir)}")
-                backup_ok = utils.backup_apollo_executables_and_dlls(dest_normal, backup_dir, log)
-                if backup_ok:
-                    log(f"Cópia dos arquivos EXE e DLL do Apollo realizada com sucesso em '{backup_folder_name}'.")
-                    log("Compactando pasta de backup do Apollo (.zip)...")
-                    zip_path = utils.compress_folder(backup_dir, 'zip', log)
-                    if zip_path and os.path.exists(zip_path):
-                        new_apollo_backup_zip_path = zip_path
-                        log(f"Backup compactado gerado com sucesso: {os.path.basename(zip_path)}")
-                        log("Removendo pasta de backup descompactada temporária...")
-                        try:
+            # 2. Descompactação dos pacotes direcionada por tipo
+            errors_occurred = []
+
+            for idx, zf in enumerate(zip_files):
+                full_zip = os.path.join(download_dir, zf)
+                name_lower = zf.lower()
+
+                # Verifica se o arquivo é um pacote de instalação (LinxDMS Web ou Linx DMS Integrador)
+                is_linx_web = (name_lower == "linxdms.zip") or ("linxdms" in name_lower and not any(k in name_lower for k in ["comissoes", "apoio", "evolutivo", "3camadas"]))
+                is_integrador = ("linxdmsintegrador" in name_lower) or ("integrador" in name_lower)
+
+                if is_linx_web or is_integrador:
+                    pkg_label = "Instalador Web (LinxDMS)" if is_linx_web else "Linx DMS Integrador"
+                    status(f"Processando {pkg_label} [{idx+1}/{total_zips}]...")
+                    log(f"\n[{idx+1}/{total_zips}] Processando: {zf} ({pkg_label}) via pasta temporária...")
+
+                    temp_extract = os.path.join(download_dir, f"temp_extract_{os.path.splitext(zf)[0]}")
+                    try:
+                        # Extrai para pasta temporária
+                        utils.unzip_file(full_zip, temp_extract, log_callback=log)
+
+                        # Busca por instaladores .exe ou .msi dentro da pasta temporária
+                        installers = []
+                        for root, dirs, files in os.walk(temp_extract):
+                            for f in files:
+                                if f.lower().endswith(".msi") or f.lower().endswith(".exe"):
+                                    installers.append(os.path.join(root, f))
+
+                        if installers:
+                            inst_path = installers[0]
+                            inst_name = os.path.basename(inst_path)
+                            log(f"Instalador encontrado: '{inst_name}'. Executando como Administrador...")
+                            status(f"Executando {inst_name}...")
+                            success = utils.execute_script_as_admin(inst_path, log_callback=log)
+                            if success:
+                                log(f"Instalação de '{inst_name}' finalizada com sucesso.")
+                            else:
+                                log(f"Aviso: Falha ou encerramento na execução do instalador '{inst_name}'.")
+                        else:
+                            log(f"Nenhum instalador (.exe ou .msi) encontrado em '{zf}'. Copiando conteúdo para {dest_normal}...")
                             import shutil
-                            shutil.rmtree(backup_dir)
-                            log("Pasta de backup descompactada e arquivos copiados removidos com sucesso.")
-                        except Exception as rm_err:
-                            log(f"Aviso ao remover pasta temporária de backup: {str(rm_err)}")
-                    else:
-                        log("Aviso: Falha ao compactar pasta de backup do Apollo.")
+                            for item in os.listdir(temp_extract):
+                                s = os.path.join(temp_extract, item)
+                                d = os.path.join(dest_normal, item)
+                                if os.path.isdir(s):
+                                    shutil.copytree(s, d, dirs_exist_ok=True)
+                                else:
+                                    shutil.copy2(s, d)
+
+                    except Exception as inst_err:
+                        err_msg = f"Falha ao processar instalador {zf}: {inst_err}"
+                        log(err_msg)
+                        errors_occurred.append(err_msg)
+                    finally:
+                        if os.path.exists(temp_extract):
+                            try:
+                                import shutil
+                                shutil.rmtree(temp_extract, ignore_errors=True)
+                                log("Pasta temporária de extração limpa com sucesso.")
+                            except Exception as rm_err:
+                                log(f"Aviso ao remover pasta temporária: {rm_err}")
                 else:
-                    log("Aviso: Falha ao realizar backup do Apollo ou nenhum arquivo EXE/DLL encontrado.")
-                log("---------------------------------------------------------\n")
-
-            for index, zip_name in enumerate(zip_files):
-                zip_path = os.path.join(download_dir, zip_name)
-                log(f"\n[{index+1}/{total_zips}] Processando: {zip_name}")
-                status(f"Descompactando {zip_name}...")
-                progress((index) / total_zips)
-
-                # Temp dir for extraction
-                temp_extract = os.path.join(download_dir, "temp_extract_" + os.path.splitext(zip_name)[0])
-                os.makedirs(temp_extract, exist_ok=True)
-
-                # Extract
-                log(f"Descompactando {zip_name} em pasta temporária...")
-                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                    zip_ref.extractall(temp_extract)
-                log("Descompactação concluída.")
-
-                # Identify package type based on name
-                name_lower = zip_name.lower()
-                
-                # Check for 3Camadas Server
-                if "3camadas_server" in name_lower or "_server.zip" in name_lower or "server_3camadas" in name_lower:
-                    log(f"Identificado como: 3 Camadas Server. Destino: {dest_server}")
-                    status("Atualizando 3 Camadas Server...")
-                    utils.copy_dir_recursive(temp_extract, dest_server, log)
-                    log(f"Sucesso! Conteúdo copiado para {dest_server}")
-                
-                # Check for 3Camadas Client
-                elif "3camadas_client" in name_lower or "_client.zip" in name_lower or "client_3camadas" in name_lower:
-                    log(f"Identificado como: 3 Camadas Client. Destino: {dest_client}")
-                    status("Atualizando 3 Camadas Client...")
-                    utils.copy_dir_recursive(temp_extract, dest_client, log)
-                    log(f"Sucesso! Conteúdo copiado para {dest_client}")
-                
-                # Check for Instalador Web
-                elif "linxdms.zip" == name_lower or ("linxdms" in name_lower and "comissoes" not in name_lower and "apoio" not in name_lower and "evolutivo" not in name_lower and "3camadas" not in name_lower):
-                    log("Identificado como: Instalador Web (LinxDMS Web). Procurando instalador...")
-                    # Search for msi or exe
-                    installers = []
-                    for root, dirs, files in os.walk(temp_extract):
-                        for f in files:
-                            if f.lower().endswith(".msi") or f.lower().endswith(".exe"):
-                                installers.append(os.path.join(root, f))
-                    
-                    if installers:
-                        # Select first installer and run
-                        inst_path = installers[0]
-                        log(f"Executável de instalação encontrado: {os.path.basename(inst_path)}")
-                        status(f"Executando instalador {os.path.basename(inst_path)}...")
-                        log("Iniciando execução elevada como Administrador...")
-                        success = utils.execute_script_as_admin(inst_path, log)
-                        if success:
-                            log("Instalador Web finalizado com sucesso.")
-                        else:
-                            log("Aviso: Falha ou cancelamento na execução do instalador Web.")
+                    # Roteamento dos pacotes normais de atualização
+                    if "3camadas_server" in name_lower or "_server.zip" in name_lower or "server_3camadas" in name_lower:
+                        target_dir = dest_server
+                        pkg_type = "3Camadas Server"
+                    elif "3camadas_client" in name_lower or "_client.zip" in name_lower or "client_3camadas" in name_lower or name_lower.endswith("client.zip"):
+                        target_dir = dest_client
+                        pkg_type = "3Camadas Client"
                     else:
-                        log("Nenhum instalador (.msi ou .exe) encontrado dentro do zip do Instalador Web.")
-                        # Move files normally as fallback
-                        log(f"Movendo conteúdo extraído para pasta de atualização Delphi: {dest_normal}")
-                        utils.copy_dir_recursive(temp_extract, dest_normal, log)
+                        target_dir = dest_normal
+                        pkg_type = "Delphi (Apollo/Atualiza)"
 
-                # Check for Linx DMS Integrador
-                elif "linxdmsintegrador.zip" == name_lower or "integrador" in name_lower:
-                    log("Identificado como: Linx DMS Integrador. Procurando instalador...")
-                    # Search for msi or exe
-                    installers = []
-                    for root, dirs, files in os.walk(temp_extract):
-                        for f in files:
-                            if f.lower().endswith(".msi") or f.lower().endswith(".exe"):
-                                installers.append(os.path.join(root, f))
-                    
-                    if installers:
-                        inst_path = installers[0]
-                        log(f"Executável de instalação encontrado: {os.path.basename(inst_path)}")
-                        status(f"Executando instalador {os.path.basename(inst_path)}...")
-                        log("Iniciando execução elevada como Administrador...")
-                        success = utils.execute_script_as_admin(inst_path, log)
-                        if success:
-                            log("Instalador Integrador finalizado com sucesso.")
-                        else:
-                            log("Aviso: Falha ou cancelamento na execução do instalador Integrador.")
-                    else:
-                        log("Nenhum instalador (.msi ou .exe) encontrado dentro do zip do Integrador.")
-                        # Move files normally as fallback
-                        log(f"Movendo conteúdo extraído para pasta de atualização Delphi: {dest_normal}")
-                        utils.copy_dir_recursive(temp_extract, dest_normal, log)
+                    status(f"Descompactando [{idx+1}/{total_zips}]: {zf}...")
+                    log(f"\n[{idx+1}/{total_zips}] Processando: {zf} ({pkg_type}) -> {target_dir}")
 
-                # Default: normal evolutionary packages, comissoes or apoio
-                else:
-                    log(f"Identificado como: Pacote Normal/Comissões/Apoio. Destino: {dest_normal}")
-                    status("Atualizando arquivos normais...")
-                    utils.copy_dir_recursive(temp_extract, dest_normal, log)
-                    log(f"Sucesso! Conteúdo copiado para {dest_normal}")
+                    try:
+                        utils.unzip_file(full_zip, target_dir, log_callback=log)
+                    except Exception as extract_err:
+                        err_msg = f"Falha ao descompactar {zf}: {extract_err}"
+                        errors_occurred.append(err_msg)
 
-                # Clean temp extract folder
-                try:
-                    import shutil
-                    shutil.rmtree(temp_extract)
-                    log("Pasta temporária de extração limpa.")
-                except Exception as e:
-                    log(f"Aviso ao remover pasta temporária: {str(e)}")
+                self.progress_linx_update(int(((idx + 1) / total_zips) * 100))
 
-            # Exclusão dos arquivos zipados da pasta de atualização de origem
-            log("\n--- EXCLUINDO ARQUIVOS COMPACTADOS (.ZIP) DE ORIGEM ---")
-            status("Excluindo arquivos zip baixados...")
+
+            # 3. Exclusão dos arquivos .zip baixados na pasta de origem após a descompactação
+            log("\n--- EXCLUINDO ARQUIVOS ZIP BAIXADOS DA PASTA DE ORIGEM ---")
             deleted_zips_count = 0
-            for z_file in zip_files:
-                z_full_path = os.path.join(download_dir, z_file)
-                if os.path.exists(z_full_path):
-                    try:
-                        os.remove(z_full_path)
-                        log(f"Arquivo zip removido: {z_file}")
+            for zf in zip_files:
+                full_zip = os.path.join(download_dir, zf)
+                try:
+                    if os.path.exists(full_zip):
+                        os.remove(full_zip)
+                        log(f"Arquivo zip excluído: {zf}")
                         deleted_zips_count += 1
-                    except Exception as e_rm:
-                        log(f"Aviso ao remover zip {z_file}: {str(e_rm)}")
-            log(f"Limpeza concluída. {deleted_zips_count} arquivos .zip removidos da pasta de origem.")
+                except Exception as del_err:
+                    log(f"Aviso ao excluir arquivo zip '{zf}': {del_err}")
 
-            # Se o backup atual foi gerado e a atualização foi completada com sucesso, exclui o backup zip anterior
-            if new_apollo_backup_zip_path and os.path.exists(new_apollo_backup_zip_path):
-                old_backup_zip = c.get("last_apollo_backup_zip", "")
-                if old_backup_zip and os.path.exists(old_backup_zip) and os.path.abspath(old_backup_zip) != os.path.abspath(new_apollo_backup_zip_path):
-                    log(f"\nExcluindo backup zip antigo anterior: {os.path.basename(old_backup_zip)}...")
-                    try:
-                        os.remove(old_backup_zip)
-                        log(f"Backup zip antigo {os.path.basename(old_backup_zip)} excluído com sucesso.")
-                    except Exception as rm_old_err:
-                        log(f"Aviso ao excluir backup zip antigo anterior: {str(rm_old_err)}")
-                
-                # Salva o novo caminho de backup zip no config
-                c["last_apollo_backup_zip"] = os.path.abspath(new_apollo_backup_zip_path)
-                config.save_config(c)
+            if deleted_zips_count > 0:
+                log(f"Limpeza concluída: {deleted_zips_count} arquivo(s) .zip excluído(s) da pasta '{download_dir}'.")
 
-            log("\n--- PROCESSO DE ATUALIZAÇÃO CONCLUÍDO COM SUCESSO ---")
-            status("Atualização Concluída.")
-            progress(1.0)
-            self.after(0, lambda: messagebox.showinfo("Sucesso", "Atualização concluída com sucesso! Todos os pacotes Linx foram descompactados e aplicados nos destinos correspondentes."))
+            if errors_occurred:
+                status("Atualização concluída com avisos de permissão.")
+                log("\n--- RESUMO DE AVISOS DE PERMISSÃO / ERROS ---")
+                for err in errors_occurred:
+                    log(f"• {err}")
+                if hasattr(self, "linx_update_finished_signal"):
+                    self.linx_update_finished_signal.emit(False, "Alguns arquivos não puderam ser descompactados devido a permissões/processos em execução:\n\n" + "\n".join(errors_occurred[:3]))
+            else:
+                status("Atualização do Linx concluída com sucesso!")
+                log("\n--- ATUALIZAÇÃO DO LINX CONCLUÍDA COM SUCESSO ---")
+                if hasattr(self, "linx_update_finished_signal"):
+                    self.linx_update_finished_signal.emit(True, "Atualização do Linx concluída com sucesso!")
+
 
         except Exception as e:
-            status("Processo abortado.")
-            err_msg = str(e)
-            log(f"ERRO CRÍTICO: {err_msg}")
-            self.after(0, lambda: messagebox.showerror("Erro na Atualização", f"Ocorreu um erro no processo de atualização:\n{err_msg}"))
+            log(f"ERRO durante atualização do Linx: {e}")
+            status("Erro na atualização.")
+            if hasattr(self, "linx_update_finished_signal"):
+                self.linx_update_finished_signal.emit(False, str(e))
+
 
         finally:
-            self.linx_updating = False
-            self.after(0, lambda: self.set_navigation_state("normal"))
-            self.after(0, lambda: self.linx_start_update_btn.configure(state="normal", text="Iniciar Atualização"))
+            QTimer.singleShot(0, lambda: self.btn_run_linx_update.setEnabled(True))
 
-
-    def log_to_linx_update_console(self, message):
-        self.linx_update_console_log.configure(state="normal")
-        self.linx_update_console_log.insert("end", f"[{datetime.now().strftime('%H:%M:%S')}] {message}\n")
-        self.linx_update_console_log.configure(state="disabled")
-        self.linx_update_console_log.see("end")
-
-
-    def setup_tab_linx_utilities(self):
-        tab = self.frame_linx_utilities
-        tab.grid_columnconfigure(0, weight=1)
-
-        # Title
-        ctk.CTkLabel(tab, text="Utilitários e Manutenção Linx", font=ctk.CTkFont(size=20, weight="bold")).grid(row=0, column=0, padx=20, pady=(20, 5), sticky="w")
-        ctk.CTkLabel(tab, text="Ferramentas auxiliares para gerenciamento, pesquisa, limpeza de arquivos e reinício de servidores Linx.", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=20, pady=(0, 15), sticky="w")
-
-        # Cleanup card
-        cleanup_frame = ctk.CTkFrame(tab)
-        cleanup_frame.grid(row=2, column=0, padx=20, pady=10, sticky="ew")
-        cleanup_frame.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(cleanup_frame, text="Limpeza de Executáveis e DLLs do Linx", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 10), sticky="w")
-        
-        details_text = (
-            "Esta ferramenta permite listar, pesquisar e excluir arquivos executáveis (.exe) e bibliotecas (.dll)\n"
-            "nas pastas do Linx (Apollo/Atualiza, 3Camadas Server, ou 3Camadas Client).\n\n"
-            "Quando arquivos estão abertos/travados, eles são renomeados pelo sistema com padrões como 'nome_data.exe'.\n"
-            "Você pode utilizar filtros de texto comum, glob (ex: *2026*.dll) ou expressões regulares (regex) para pesquisar\n"
-            "e marcar somente os arquivos desejados para a remoção definitiva."
-        )
-        self.linx_cleanup_btn = ctk.CTkButton(cleanup_frame, text="Limpar Executáveis/DLLs Linx", font=ctk.CTkFont(size=13, weight="bold"), height=35, command=self.open_linx_cleanup_popup)
-        self.linx_cleanup_btn.grid(row=1, column=0, padx=15, pady=(0, 20), sticky="w")
-        CTkToolTip(self.linx_cleanup_btn, details_text)
-
-        # Extension cleanup card
-        ext_frame = ctk.CTkFrame(tab)
-        ext_frame.grid(row=3, column=0, padx=20, pady=10, sticky="ew")
-        ext_frame.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(ext_frame, text="Limpeza de Arquivos por Extensão (Linx)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 10), sticky="w")
-        
-        ext_details = (
-            "Esta ferramenta permite pesquisar e excluir arquivos de qualquer extensão específica (ex: .log, .tmp, .zip)\n"
-            "dentro dos diretórios do Linx ou outro diretório que você escolher.\n"
-            "Você define a extensão a ser buscada, filtra os resultados e seleciona manualmente quais remover."
-        )
-        self.linx_ext_cleanup_btn = ctk.CTkButton(ext_frame, text="Limpar por Extensão Linx", font=ctk.CTkFont(size=13, weight="bold"), height=35, command=lambda: self.open_extension_cleanup_popup("linx"))
-        self.linx_ext_cleanup_btn.grid(row=1, column=0, padx=15, pady=(0, 20), sticky="w")
-        CTkToolTip(self.linx_ext_cleanup_btn, ext_details)
-
-        # Remote Reboot via PowerShell Card
-        linx_ps_frame = ctk.CTkFrame(tab)
-        linx_ps_frame.grid(row=4, column=0, padx=20, pady=10, sticky="ew")
-        linx_ps_frame.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(linx_ps_frame, text="Reinício de Servidores Remotos (PowerShell)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 10), sticky="w")
-        
-        linx_ps_details = (
-            "Esta ferramenta permite enviar o comando PowerShell (`Restart-Computer`) para reiniciar servidores adjacentes do Linx.\n"
-            "Permite forçar o reinício (-Force) encerrando sessões de usuários conectados e serviços ativos no servidor de destino."
-        )
-        self.linx_ps_reboot_btn = ctk.CTkButton(linx_ps_frame, text="Reiniciar Servidor Linx (PowerShell)", font=ctk.CTkFont(size=13, weight="bold"), height=35, command=lambda: self.open_powershell_restart_popup("linx"))
-        self.linx_ps_reboot_btn.grid(row=1, column=0, padx=15, pady=(0, 20), sticky="w")
-        CTkToolTip(self.linx_ps_reboot_btn, linx_ps_details)
-
-        # Task Scheduler (Agendador de Tarefas do Windows) Card
-        taskschd_frame = ctk.CTkFrame(tab)
-        taskschd_frame.grid(row=5, column=0, padx=20, pady=10, sticky="ew")
-        taskschd_frame.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(taskschd_frame, text="Agendador de Tarefas do Windows (Task Scheduler)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=15, pady=(15, 10), sticky="w")
-        
-        taskschd_details = (
-            "Atalho para abrir a interface gráfica do Agendador de Tarefas do Windows (`taskschd.msc`).\n"
-            "Permite visualizar, criar, editar ou desativar tarefas agendadas no sistema."
-        )
-        self.taskschd_btn = ctk.CTkButton(taskschd_frame, text="Abrir Agendador de Tarefas (taskschd.msc)", font=ctk.CTkFont(size=13, weight="bold"), height=35, fg_color="#16a085", hover_color="#1abc9c", command=self.open_task_scheduler)
-        self.taskschd_btn.grid(row=1, column=0, padx=15, pady=(0, 20), sticky="w")
-        CTkToolTip(self.taskschd_btn, taskschd_details)
-
-
-    def open_task_scheduler(self):
-        """Abre o Agendador de Tarefas do Windows (taskschd.msc)."""
-        if platform.system() != "Windows":
-            messagebox.showinfo("Informação", "O Agendador de Tarefas (taskschd.msc) é um recurso exclusivo do sistema operacional Windows.")
-            return
-
-        try:
-            import subprocess
-            subprocess.Popen("taskschd.msc", shell=True)
-        except Exception as e:
-            messagebox.showerror("Erro ao abrir", f"Não foi possível iniciar o Agendador de Tarefas (taskschd.msc):\n{str(e)}")
-
-
-
-    def open_linx_cleanup_popup(self):
-        """Abre uma janela pop-up modal para listar, pesquisar por glob/regex, e excluir arquivos exe/dll do Linx."""
+    def open_linx_folder(self, target):
         c = self.app_config
+        if target == "apollo":
+            path = c.get("linx_path_normal_win", "C:\\Apollo") if self.os_type == "Windows" else "./Apollo"
+        else:
+            path = c.get("linx_path_server_win", "C:\\3camadas") if self.os_type == "Windows" else "./3Camadas"
 
-        # Create window
-        popup = ctk.CTkToplevel(self)
-        popup.title("Limpeza de Executáveis e DLLs - Linx DMS")
-        screen_h = self.winfo_screenheight()
-        target_h = min(620, max(440, screen_h - 120))
-        popup.geometry(f"640x{target_h}")
-        popup.minsize(520, 400)
-        popup.grab_set()  # Make modal
-
-        # Title labels
-        ctk.CTkLabel(popup, text="Utilitário de Limpeza Linx", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, padx=20, pady=(15, 5), sticky="w")
-
-        # Top Control Frame (Directory selection + Path details)
-        top_ctrl = ctk.CTkFrame(popup)
-        top_ctrl.grid(row=1, column=0, padx=20, pady=5, sticky="ew")
-        top_ctrl.grid_columnconfigure(0, weight=1)
-        top_ctrl.grid_columnconfigure(1, weight=3)
-        top_ctrl.grid_columnconfigure(2, weight=1)
-        popup.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(top_ctrl, text="Pasta Linx a Limpar:", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=10, pady=5, sticky="w")
-
-        custom_path_var = ctk.StringVar(value="")
-
-        # Directory resolution helper
-        def get_resolved_path(dir_key):
-            if dir_key == "C:\\Apollo":
-                return "C:\\Apollo" if self.os_type == "Windows" else "./Apollo"
-            elif dir_key == "C:\\3camadas":
-                return "C:\\3camadas" if self.os_type == "Windows" else "./3Camadas"
-            elif dir_key == "Outro Diretório...":
-                return custom_path_var.get()
-            return ""
-
-        # OptionMenu selection
-        dir_var = ctk.StringVar(value="C:\\Apollo")
-        dir_label_path = ctk.CTkLabel(popup, text="Caminho: -", font=ctk.CTkFont(size=11, slant="italic"), anchor="w")
-        dir_label_path.grid(row=2, column=0, padx=20, pady=(2, 8), sticky="w")
-
-        # Search/Filter Frame
-        filter_frame = ctk.CTkFrame(popup)
-        filter_frame.grid(row=3, column=0, padx=20, pady=5, sticky="ew")
-        filter_frame.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(filter_frame, text="Pesquisa / Filtro (Glob/Regex):", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=10, pady=(5, 0), sticky="w")
-        
-        filter_entry_frame = ctk.CTkFrame(filter_frame, fg_color="transparent")
-        filter_entry_frame.grid(row=1, column=0, padx=10, pady=5, sticky="ew")
-        filter_entry_frame.grid_columnconfigure(0, weight=1)
-
-        filter_entry = ctk.CTkEntry(filter_entry_frame, placeholder_text="Ex: *2026*.dll ou ^DMS_.*\\.exe$")
-        filter_entry.grid(row=0, column=0, sticky="ew")
-
-        # Selection tracking dictionaries
-        all_files_found = []
-        file_checkboxes_widgets = []
-        checkbox_selections = {} # Stores {filepath: BooleanVar}
-
-        # Scroll frame for items list
-        scroll_frame = ctk.CTkScrollableFrame(popup, label_text="Arquivos Encontrados (.exe / .dll)")
-        scroll_frame.grid(row=4, column=0, padx=20, pady=10, sticky="nsew")
-        popup.grid_rowconfigure(4, weight=1)
-
-        # Glob / Regex matching logic
-        import fnmatch
-        import re
-
-        def matches_pattern(filename, pattern):
-            if not pattern:
-                return True
-            pattern = pattern.strip()
-            # 1. Glob matching (contains * or ?)
-            if "*" in pattern or "?" in pattern:
-                try:
-                    return fnmatch.fnmatchcase(filename.lower(), pattern.lower())
-                except Exception:
-                    pass
-            # 2. Regex matching
-            try:
-                regex = re.compile(pattern, re.IGNORECASE)
-                return bool(regex.search(filename))
-            except Exception:
-                pass
-            # 3. Simple substring fallback
-            return pattern.lower() in filename.lower()
-
-        # Render list based on filter
-        def populate_list():
-            # Clear widgets inside scroll frame
-            for w in file_checkboxes_widgets:
-                try:
-                    w.destroy()
-                except Exception:
-                    pass
-            file_checkboxes_widgets.clear()
-
-            target_path = get_resolved_path(dir_var.get())
-            dir_label_path.configure(text=f"Diretório ativo: {os.path.abspath(target_path)}")
-
-            if not os.path.exists(target_path):
-                err_lbl = ctk.CTkLabel(scroll_frame, text="Caminho do diretório não encontrado no sistema.", font=ctk.CTkFont(slant="italic"))
-                err_lbl.grid(row=0, column=0, padx=10, pady=10, sticky="w")
-                file_checkboxes_widgets.append(err_lbl)
-                return
-
-            filter_text = filter_entry.get().strip()
-
-            # Filter original files
-            filtered_files = []
-            for f in all_files_found:
-                if matches_pattern(f, filter_text):
-                    filtered_files.append(f)
-
-            if not filtered_files:
-                empty_lbl = ctk.CTkLabel(scroll_frame, text="Nenhum executável ou DLL corresponde à pesquisa.", font=ctk.CTkFont(slant="italic"))
-                empty_lbl.grid(row=0, column=0, padx=10, pady=10, sticky="w")
-                file_checkboxes_widgets.append(empty_lbl)
-                return
-
-            for idx, filename in enumerate(filtered_files):
-                full_path = os.path.join(target_path, filename)
-                
-                # Checkbox selection tracking
-                if full_path not in checkbox_selections:
-                    checkbox_selections[full_path] = ctk.BooleanVar(value=False)
-                
-                # Check stats
-                try:
-                    stats = os.stat(full_path)
-                    size_mb = stats.st_size / (1024 * 1024)
-                    mtime = datetime.fromtimestamp(stats.st_mtime).strftime("%d/%m/%Y %H:%M")
-                    details = f" ({size_mb:.2f} MB) - {mtime}"
-                except Exception:
-                    details = ""
-
-                chk = ctk.CTkCheckBox(scroll_frame, text=f"{filename}{details}", variable=checkbox_selections[full_path])
-                chk.grid(row=idx, column=0, padx=10, pady=4, sticky="w")
-                file_checkboxes_widgets.append(chk)
-
-        # Scans directory and resets files tracking
-        # Browse Custom Dir button helper
-        def browse_custom_dir():
-            from tkinter import filedialog
-            selected = filedialog.askdirectory(parent=popup, title="Selecionar pasta para limpeza")
-            if selected:
-                custom_path_var.set(selected)
-                dir_var.set("Outro Diretório...")
-                scan_directory()
-
-        def scan_directory():
-            all_files_found.clear()
-            checkbox_selections.clear()
-            
-            target_path = get_resolved_path(dir_var.get())
-            if dir_var.get() == "Outro Diretório..." and not target_path:
-                browse_custom_dir()
-                return
-
-            if os.path.exists(target_path):
-                try:
-                    for name in os.listdir(target_path):
-                        if os.path.isfile(os.path.join(target_path, name)):
-                            name_lower = name.lower()
-                            if name_lower.endswith(".exe") or name_lower.endswith(".dll"):
-                                all_files_found.append(name)
-                    all_files_found.sort()
-                except Exception as err:
-                    print(f"Erro ao escanear diretório: {str(err)}")
-            populate_list()
-
-        # Selection helpers for filtered items
-        def select_filtered(state):
-            filter_text = filter_entry.get().strip()
-            target_path = get_resolved_path(dir_var.get())
-            
-            for filename in all_files_found:
-                if matches_pattern(filename, filter_text):
-                    full_path = os.path.join(target_path, filename)
-                    if full_path in checkbox_selections:
-                        checkbox_selections[full_path].set(state)
-
-        # UI Actions
-        dir_menu = ctk.CTkOptionMenu(top_ctrl, variable=dir_var, values=["C:\\Apollo", "C:\\3camadas", "Outro Diretório..."], command=lambda v: scan_directory())
-        dir_menu.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
-
-        btn_browse = ctk.CTkButton(top_ctrl, text="Pesquisar...", width=95, command=browse_custom_dir)
-        btn_browse.grid(row=0, column=2, padx=(0, 10), pady=5)
-
-        # Buttons in filter entry frame
-        btn_apply = ctk.CTkButton(filter_entry_frame, text="Filtrar", width=80, command=populate_list)
-        btn_apply.grid(row=0, column=1, padx=(5, 0))
-
-        btn_clear = ctk.CTkButton(filter_entry_frame, text="Limpar", width=80, fg_color="transparent", border_width=1, command=lambda: [filter_entry.delete(0, "end"), populate_list()])
-        btn_clear.grid(row=0, column=2, padx=(5, 0))
-
-        # Selection Control Row (Marcar/Desmarcar Filtrados)
-        sel_ctrl_frame = ctk.CTkFrame(popup, fg_color="transparent")
-        sel_ctrl_frame.grid(row=5, column=0, padx=20, pady=2, sticky="ew")
-        sel_ctrl_frame.grid_columnconfigure(0, weight=1)
-        sel_ctrl_frame.grid_columnconfigure(1, weight=1)
-
-        btn_check_all = ctk.CTkButton(sel_ctrl_frame, text="Marcar Filtrados", height=24, fg_color="#34495e", hover_color="#2c3e50", font=ctk.CTkFont(size=11), command=lambda: select_filtered(True))
-        btn_check_all.grid(row=0, column=0, padx=(0, 5), sticky="ew")
-
-        btn_uncheck_all = ctk.CTkButton(sel_ctrl_frame, text="Desmarcar Filtrados", height=24, fg_color="#34495e", hover_color="#2c3e50", font=ctk.CTkFont(size=11), command=lambda: select_filtered(False))
-        btn_uncheck_all.grid(row=0, column=1, padx=(5, 0), sticky="ew")
-
-        # Footer Frame
-        footer = ctk.CTkFrame(popup, fg_color="transparent")
-        footer.grid(row=6, column=0, padx=20, pady=(10, 15), sticky="ew")
-        footer.grid_columnconfigure(0, weight=1)
-        footer.grid_columnconfigure(1, weight=1)
-
-        # Delete Action
-        def on_delete_clicked():
-            to_delete = [path for path, var in checkbox_selections.items() if var.get()]
-            if not to_delete:
-                messagebox.showwarning("Aviso", "Nenhum arquivo selecionado para exclusão.", parent=popup)
-                return
-            
-            total_sel = len(to_delete)
-            confirm_msg = f"Tem certeza de que deseja EXCLUIR DEFINITIVAMENTE os {total_sel} arquivo(s) selecionado(s)?\n\n"
-            max_preview = 6
-            for p in to_delete[:max_preview]:
-                confirm_msg += f"• {os.path.basename(p)}\n"
-            
-            if total_sel > max_preview:
-                confirm_msg += f"\n... e mais {total_sel - max_preview} arquivo(s) selecionado(s)."
-            
-            confirm = messagebox.askyesno("Confirmar Exclusão", confirm_msg, parent=popup)
-            if confirm:
-                deleted_count = 0
-                errors = []
-                for p in to_delete:
-                    try:
-                        os.remove(p)
-                        deleted_count += 1
-                    except Exception as err:
-                        errors.append(f"{os.path.basename(p)}: {str(err)}")
-                
-                if errors:
-                    max_err_preview = 5
-                    err_msg = f"Foram excluídos {deleted_count} de {total_sel} arquivos.\n\nErros ocorridos:\n"
-                    err_msg += "\n".join(errors[:max_err_preview])
-                    if len(errors) > max_err_preview:
-                        err_msg += f"\n... e mais {len(errors) - max_err_preview} erro(s)."
-                    messagebox.showerror("Exclusão Parcial", err_msg, parent=popup)
-                else:
-                    messagebox.showinfo("Sucesso", f"Todos os {deleted_count} arquivos selecionados foram excluídos com sucesso!", parent=popup)
-                
-                # Rescan and rebuild UI
-                scan_directory()
-
-        delete_btn = ctk.CTkButton(footer, text="Excluir Selecionados", font=ctk.CTkFont(size=13, weight="bold"), fg_color="#d9534f", hover_color="#c9302c", height=38, command=on_delete_clicked)
-        delete_btn.grid(row=0, column=0, padx=(0, 5), sticky="ew")
-
-        close_btn = ctk.CTkButton(footer, text="Fechar", height=38, fg_color="transparent", border_width=1, command=popup.destroy)
-        close_btn.grid(row=0, column=1, padx=(5, 0), sticky="ew")
-
-        # Initial Scan
-        scan_directory()
-
-    def setup_tab_linx_notes(self):
-        tab = self.frame_linx_notes
-        tab.grid_columnconfigure(0, weight=1)
-        tab.grid_rowconfigure(0, weight=0)
-        tab.grid_rowconfigure(1, weight=1)
-        tab.grid_rowconfigure(2, weight=0)
-
-        # Header Frame
-        header_frame = ctk.CTkFrame(tab, fg_color="transparent")
-        header_frame.grid(row=0, column=0, padx=20, pady=(15, 10), sticky="ew")
-        header_frame.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(header_frame, text="Observações e Anotações (Linx DMS / Apollo)", font=ctk.CTkFont(size=18, weight="bold")).grid(row=0, column=0, sticky="w")
-        ctk.CTkLabel(header_frame, text="Campo de texto livre para anotações do sistema Linx DMS. Salvo automaticamente nas configurações.", font=ctk.CTkFont(size=12, slant="italic")).grid(row=1, column=0, sticky="w", pady=(2, 0))
-
-        # Multiline Textbox
-        self.linx_notes_box = ctk.CTkTextbox(tab, font=ctk.CTkFont(size=13), wrap="word")
-        self.linx_notes_box.grid(row=1, column=0, padx=20, pady=(0, 10), sticky="nsew")
-
-        # Load initial value from config
-        initial_notes = self.app_config.get("linx_notes", "")
-        if initial_notes:
-            self.linx_notes_box.insert("0.0", initial_notes)
-
-        # Footer Frame (Save Button & Feedback Status)
-        footer_frame = ctk.CTkFrame(tab, fg_color="transparent")
-        footer_frame.grid(row=2, column=0, padx=20, pady=(0, 15), sticky="ew")
-        footer_frame.grid_columnconfigure(0, weight=1)
-
-        self.linx_notes_status_lbl = ctk.CTkLabel(footer_frame, text="", font=ctk.CTkFont(size=12))
-        self.linx_notes_status_lbl.grid(row=0, column=0, sticky="w")
-
-        btn_save = ctk.CTkButton(
-            footer_frame,
-            text="💾 Salvar Observações",
-            width=160,
-            height=35,
-            font=ctk.CTkFont(size=13, weight="bold"),
-            command=self.save_linx_notes
-        )
-        btn_save.grid(row=0, column=1, sticky="e")
-
-    def save_linx_notes(self):
-        if hasattr(self, "linx_notes_box"):
-            notes_text = self.linx_notes_box.get("0.0", "end-1c")
-            self.app_config["linx_notes"] = notes_text
-            if config.save_config(self.app_config):
-                if hasattr(self, "linx_notes_status_lbl"):
-                    now_str = datetime.now().strftime("%H:%M:%S")
-                    self.linx_notes_status_lbl.configure(text=f"✓ Observações salvas às {now_str}", text_color="#2fa572")
-
-
-
+        os.makedirs(path, exist_ok=True)
+        if self.os_type == "Windows":
+            os.startfile(path)
+        else:
+            import subprocess
+            subprocess.run(["xdg-open", path])

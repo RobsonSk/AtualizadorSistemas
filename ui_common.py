@@ -5,633 +5,613 @@ import platform
 import threading
 import time
 from datetime import datetime
-from tkinter import filedialog, messagebox
-import shutil
 
-import customtkinter as ctk
+from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtWidgets import (
+    QApplication, QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
+    QLineEdit, QComboBox, QCheckBox, QScrollArea, QWidget,
+    QTextEdit, QMessageBox, QFrame, QGroupBox
+)
 
 import config
 import ftp_client
 import utils
 
+
 class CTkToolTip:
-    """Exibe um tooltip flutuante moderno ao passar o mouse sobre um widget do CustomTkinter."""
+    """Helper compatível para definir tooltips em widgets PySide6."""
     def __init__(self, widget, text, delay=300):
-        self.widget = widget
-        self.text = text
-        self.delay = delay
-        self.tooltip_window = None
-        self.id = None
-        
-        self.widget.bind("<Enter>", self.schedule_show, add="+")
-        self.widget.bind("<Leave>", self.hide, add="+")
-        self.widget.bind("<ButtonPress>", self.hide, add="+")
+        if widget is not None and text:
+            widget.setToolTip(text)
 
-    def schedule_show(self, event=None):
-        self.hide()
-        self.id = self.widget.after(self.delay, self.show)
 
-    def show(self, event=None):
-        if self.tooltip_window or not self.text:
-            return
-        
+class ExtensionCleanupDialog(QDialog):
+    """Pop-up modal em PySide6 para pesquisa e exclusão de arquivos por Regex, Glob ou Extensão."""
+    def __init__(self, parent_app, system_name="nbs"):
+        super().__init__(parent_app)
+        self.app = parent_app
+        self.system_name = system_name
+        self.app_config = parent_app.app_config if hasattr(parent_app, "app_config") else config.load_config()
+        self.os_type = platform.system()
+
+        sys_title = "NBS" if system_name == "nbs" else "Linx DMS / Apollo"
+        self.setWindowTitle(f"Limpeza de Arquivos por Regex / Extensão - {sys_title}")
+        self.resize(720, 560)
+        self.setModal(True)
+
+        self.all_files_found = []
+        self.checkboxes = {}
+        self.custom_path = ""
+
+        self._build_ui()
+        self.scan_directory()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+
+        sys_title = "NBS" if self.system_name == "nbs" else "Linx DMS / Apollo"
+        title_lbl = QLabel(f"🧹 Utilitário de Limpeza de Arquivos por Regex / Extensão ({sys_title})")
+        title_lbl.setStyleSheet("font-size: 15px; font-weight: bold; color: #cdd6f4;")
+        layout.addWidget(title_lbl)
+
+        ctrl_group = QGroupBox("Configurações do Diretório e Filtros")
+        ctrl_layout = QVBoxLayout(ctrl_group)
+
+        # Folder Selection Row
+        folder_row = QHBoxLayout()
+        folder_lbl = QLabel("Pasta a Limpar:")
+        folder_lbl.setStyleSheet("font-weight: bold;")
+
+        if self.system_name == "nbs":
+            menu_values = ["C:\\NBS", "C:\\Atualizacao", "Outro Diretório..."]
+        else:
+            menu_values = ["C:\\Apollo", "C:\\3camadas", "C:\\atualizacao", "Outro Diretório..."]
+
+        self.dir_combo = QComboBox()
+        self.dir_combo.addItems(menu_values)
+        self.dir_combo.currentTextChanged.connect(self.on_dir_combo_changed)
+
+        btn_browse = QPushButton("📁 Selecionar Pasta...")
+        btn_browse.setStyleSheet("font-weight: bold;")
+        btn_browse.clicked.connect(self.browse_custom_dir)
+
+        folder_row.addWidget(folder_lbl)
+        folder_row.addWidget(self.dir_combo, 1)
+        folder_row.addWidget(btn_browse)
+        ctrl_layout.addLayout(folder_row)
+
+        self.dir_label_path = QLabel("Caminho Ativo: -")
+        self.dir_label_path.setStyleSheet("font-size: 11px; font-style: italic; color: #a6adc8;")
+        ctrl_layout.addWidget(self.dir_label_path)
+
+        # Extension Filter Row
+        ext_row = QHBoxLayout()
+        ext_lbl = QLabel("Extensão:")
+        ext_lbl.setStyleSheet("font-weight: bold;")
+        self.ext_entry = QLineEdit(".*")
+        self.ext_entry.setPlaceholderText("Ex: .exe, .dll, .log, .tmp ou .* para todos")
+        self.ext_entry.returnPressed.connect(self.scan_directory)
+
+        btn_search = QPushButton("🔍 Varrer Pasta")
+        btn_search.setStyleSheet("font-weight: bold; background-color: #313244; color: #cdd6f4;")
+        btn_search.clicked.connect(self.scan_directory)
+
+        ext_row.addWidget(ext_lbl)
+        ext_row.addWidget(self.ext_entry, 1)
+        ext_row.addWidget(btn_search)
+        ctrl_layout.addLayout(ext_row)
+
+        # Regex / Glob Filter Row
+        filter_row = QHBoxLayout()
+        filter_lbl = QLabel("Filtro Regex / Glob:")
+        filter_lbl.setStyleSheet("font-weight: bold;")
+        self.filter_entry = QLineEdit()
+        self.filter_entry.setPlaceholderText(r"Ex Regex: ^.*2026.*$, ^NBS_.*\.exe$, .*\.(tmp|log)$")
+
+        self.filter_entry.textChanged.connect(self.populate_list)
+
+        btn_clear = QPushButton("Limpar Filtro")
+        btn_clear.clicked.connect(self._clear_filter)
+
+        filter_row.addWidget(filter_lbl)
+        filter_row.addWidget(self.filter_entry, 1)
+        filter_row.addWidget(btn_clear)
+        ctrl_layout.addLayout(filter_row)
+
+        layout.addWidget(ctrl_group)
+
+        # Scroll Area for File List
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("background-color: #181825; border: 1px solid #45475a;")
+        self.scroll_content = QWidget()
+        self.scroll_layout = QVBoxLayout(self.scroll_content)
+        self.scroll_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        scroll.setWidget(self.scroll_content)
+        layout.addWidget(scroll, 1)
+
+        # Selection Action Buttons
+        sel_row = QHBoxLayout()
+        btn_check_all = QPushButton("☑️ Marcar Filtrados")
+        btn_check_all.clicked.connect(lambda: self.select_filtered(True))
+        btn_uncheck_all = QPushButton("☐ Desmarcar Filtrados")
+        btn_uncheck_all.clicked.connect(lambda: self.select_filtered(False))
+        sel_row.addWidget(btn_check_all)
+        sel_row.addWidget(btn_uncheck_all)
+        layout.addLayout(sel_row)
+
+        # Footer Buttons
+        footer = QHBoxLayout()
+        btn_delete = QPushButton("🗑️ Excluir Selecionados")
+        btn_delete.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold; padding: 8px 16px; font-size: 13px; border-radius: 4px;")
+        btn_delete.clicked.connect(self.on_delete_clicked)
+
+        btn_close = QPushButton("Fechar")
+        btn_close.setStyleSheet("padding: 8px 16px; font-size: 13px;")
+        btn_close.clicked.connect(self.accept)
+
+        footer.addWidget(btn_delete)
+        footer.addWidget(btn_close)
+        layout.addLayout(footer)
+
+    def on_dir_combo_changed(self, text):
+        if text == "Outro Diretório...":
+            self.browse_custom_dir()
+        else:
+            self.scan_directory()
+
+    def get_resolved_path(self):
+        dir_key = self.dir_combo.currentText()
+        c = self.app_config
+        if self.system_name == "nbs":
+            if dir_key == "C:\\NBS":
+                return c.get("nbs_path_win", "C:\\NBS") if self.os_type == "Windows" else c.get("nbs_path_linux", "./NBS_Local")
+            elif dir_key == "C:\\Atualizacao":
+                return c.get("nbs_download_path_win", "C:\\Atualizacao") if self.os_type == "Windows" else c.get("nbs_download_path_linux", "./Atualizacao")
+        else:
+            if dir_key == "C:\\Apollo":
+                return c.get("linx_path_normal_win", "C:\\Apollo") if self.os_type == "Windows" else c.get("linx_path_normal_linux", "./Apollo")
+            elif dir_key == "C:\\3camadas":
+                return c.get("linx_path_server_win", "C:\\3camadas") if self.os_type == "Windows" else c.get("linx_path_server_linux", "./3Camadas")
+            elif dir_key == "C:\\atualizacao":
+                return c.get("linx_download_path_win", "C:\\atualizacao") if self.os_type == "Windows" else c.get("linx_download_path_linux", "./atualizacao")
+
+        if dir_key == "Outro Diretório...":
+            return self.custom_path
+        return ""
+
+    def browse_custom_dir(self):
+        from PySide6.QtWidgets import QFileDialog
+        selected = QFileDialog.getExistingDirectory(self, "Selecionar pasta para limpeza")
+        if selected:
+            self.custom_path = selected
+            if self.dir_combo.findText("Outro Diretório...") != -1:
+                self.dir_combo.setCurrentText("Outro Diretório...")
+            self.scan_directory()
+
+    def _clear_filter(self):
+        self.filter_entry.clear()
+        self.populate_list()
+
+    def matches_pattern(self, filename, pattern):
+        if not pattern:
+            return True
+        pattern = pattern.strip()
+        # 1. Regex matching
         try:
-            x = self.widget.winfo_rootx() + 20
-            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
-
-            self.tooltip_window = tw = ctk.CTkToplevel(self.widget)
-            tw.wm_overrideredirect(True)
-            tw.wm_geometry(f"+{x}+{y}")
-            tw.attributes("-topmost", True)
-
-            label = ctk.CTkLabel(
-                tw,
-                text=self.text,
-                justify="left",
-                corner_radius=6,
-                fg_color=("#2b2b2b", "#1f1f1f"),
-                text_color="#ffffff",
-                font=ctk.CTkFont(size=11),
-                padx=10,
-                pady=6
-            )
-            label.pack()
+            regex = re.compile(pattern, re.IGNORECASE)
+            if regex.search(filename):
+                return True
         except Exception:
             pass
+        # 2. Glob matching (contains * or ?)
+        if "*" in pattern or "?" in pattern:
+            try:
+                import fnmatch
+                if fnmatch.fnmatchcase(filename.lower(), pattern.lower()):
+                    return True
+            except Exception:
+                pass
+        # 3. Substring fallback
+        return pattern.lower() in filename.lower()
 
-    def hide(self, event=None):
-        if self.id:
+    def scan_directory(self):
+        self.all_files_found.clear()
+        target_path = self.get_resolved_path()
+
+        ext_str = self.ext_entry.text().strip().lower()
+        if ext_str in ["", "*", ".*", "*.*"]:
+            filter_by_ext = False
+        else:
+            filter_by_ext = True
+            if not ext_str.startswith("."):
+                ext_str = "." + ext_str
+
+        if os.path.exists(target_path):
             try:
-                self.widget.after_cancel(self.id)
-            except Exception:
-                pass
-            self.id = None
-        if self.tooltip_window:
+                for name in os.listdir(target_path):
+                    if os.path.isfile(os.path.join(target_path, name)):
+                        if not filter_by_ext or name.lower().endswith(ext_str):
+                            self.all_files_found.append(name)
+                self.all_files_found.sort()
+            except Exception as e:
+                print(f"Erro ao escanear diretório: {e}")
+
+        self.populate_list()
+
+    def populate_list(self):
+        while self.scroll_layout.count():
+            item = self.scroll_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
+        self.checkboxes.clear()
+        target_path = self.get_resolved_path()
+        self.dir_label_path.setText(f"Diretório ativo: {os.path.abspath(target_path) if target_path else '-'}")
+
+        if not os.path.exists(target_path):
+            lbl = QLabel("Caminho do diretório não encontrado no sistema.")
+            lbl.setStyleSheet("font-style: italic; color: #f38ba8;")
+            self.scroll_layout.addWidget(lbl)
+            return
+
+        filter_text = self.filter_entry.text().strip()
+        filtered_files = [f for f in self.all_files_found if self.matches_pattern(f, filter_text)]
+
+        if not filtered_files:
+            lbl = QLabel("Nenhum arquivo atende ao filtro/extensão especificado.")
+            lbl.setStyleSheet("font-style: italic; color: #a6adc8;")
+            self.scroll_layout.addWidget(lbl)
+            return
+
+        for filename in filtered_files:
+            full_path = os.path.join(target_path, filename)
             try:
-                self.tooltip_window.destroy()
+                stats = os.stat(full_path)
+                size_mb = stats.st_size / (1024 * 1024)
+                mtime = datetime.fromtimestamp(stats.st_mtime).strftime("%d/%m/%Y %H:%M")
+                details = f" ({size_mb:.2f} MB) - {mtime}"
             except Exception:
-                pass
-            self.tooltip_window = None
+                details = ""
+
+            chk = QCheckBox(f"{filename}{details}")
+            chk.setStyleSheet("color: #cdd6f4; font-size: 12px;")
+            self.scroll_layout.addWidget(chk)
+            self.checkboxes[full_path] = chk
+
+    def select_filtered(self, state):
+        for chk in self.checkboxes.values():
+            chk.setChecked(state)
+
+    def on_delete_clicked(self):
+        to_delete = [path for path, chk in self.checkboxes.items() if chk.isChecked()]
+        if not to_delete:
+            QMessageBox.warning(self, "Aviso", "Nenhum arquivo selecionado para exclusão.")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Confirmação de Exclusão",
+            f"Deseja realmente excluir permanentemente os {len(to_delete)} arquivos selecionados?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        deleted_count = 0
+        error_count = 0
+        for fpath in to_delete:
+            try:
+                os.remove(fpath)
+                deleted_count += 1
+            except Exception as e:
+                error_count += 1
+                print(f"Erro ao remover {fpath}: {e}")
+
+        msg = f"{deleted_count} arquivo(s) excluído(s) com sucesso!"
+        if error_count > 0:
+            msg += f"\n{error_count} arquivo(s) não puderam ser excluídos (podem estar em uso)."
+
+        QMessageBox.information(self, "Resultado da Exclusão", msg)
+        self.scan_directory()
+
+
+class RemoteRebootDialog(QDialog):
+
+    """Pop-up modal em PySide6 para reinício remoto de servidores via PowerShell e PING."""
+    def __init__(self, parent_app, system_name="nbs"):
+        super().__init__(parent_app)
+        self.app = parent_app
+        self.system_name = system_name
+        self.app_config = parent_app.app_config if hasattr(parent_app, "app_config") else config.load_config()
+
+        sys_title = "NBS" if system_name.lower() == "nbs" else "Linx"
+        self.setWindowTitle(f"Reinício de Servidores via PowerShell - {sys_title}")
+        self.resize(680, 580)
+        self.setModal(True)
+
+        self._build_ui()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+
+        sys_title = "NBS" if self.system_name.lower() == "nbs" else "Linx"
+        title_lbl = QLabel(f"Reinício Remoto de Servidor ({sys_title})")
+        title_lbl.setStyleSheet("font-size: 16px; font-weight: bold;")
+        sub_lbl = QLabel("Envio de comando PowerShell Restart-Computer e monitoramento por PING.")
+        sub_lbl.setStyleSheet("font-size: 11px; color: #888;")
+
+        layout.addWidget(title_lbl)
+        layout.addWidget(sub_lbl)
+
+        form_group = QGroupBox("Configurações do Servidor")
+        form_layout = QVBoxLayout(form_group)
+
+        # Server Combo row
+        combo_row = QHBoxLayout()
+        combo_lbl = QLabel("IP / Host Salvo:")
+        combo_lbl.setStyleSheet("font-weight: bold;")
+
+        self.server_combo = QComboBox()
+        self.refresh_servers_combo()
+
+        btn_add_ip = QPushButton("+ Salvar")
+        btn_add_ip.setFixedWidth(70)
+        btn_add_ip.clicked.connect(self.add_ip_action)
+
+        btn_rem_ip = QPushButton("- Remover")
+        btn_rem_ip.setFixedWidth(75)
+        btn_rem_ip.setStyleSheet("background-color: #c0392b; color: white;")
+        btn_rem_ip.clicked.connect(self.remove_ip_action)
+
+        combo_row.addWidget(combo_lbl)
+        combo_row.addWidget(self.server_combo, 1)
+        combo_row.addWidget(btn_add_ip)
+        combo_row.addWidget(btn_rem_ip)
+        form_layout.addLayout(combo_row)
+
+        # Custom IP entry row
+        ip_row = QHBoxLayout()
+        ip_lbl = QLabel("IP / Host Limpo:")
+        self.custom_server_entry = QLineEdit()
+        self.custom_server_entry.setPlaceholderText("Ex: 192.168.1.100 ou SERVIDOR-02")
+        self.server_combo.currentTextChanged.connect(self.update_entry_from_combo)
+
+        self.lbl_ping_status = QLabel("DESCONHECIDO")
+        self.lbl_ping_status.setFixedWidth(110)
+        self.lbl_ping_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_ping_status.setStyleSheet("background-color: #7f8c8d; color: white; font-weight: bold; border-radius: 4px; padding: 4px;")
+
+        btn_ping = QPushButton("Testar PING")
+        btn_ping.setFixedWidth(90)
+        btn_ping.clicked.connect(self.test_ping_action)
+
+        ip_row.addWidget(ip_lbl)
+        ip_row.addWidget(self.custom_server_entry, 1)
+        ip_row.addWidget(self.lbl_ping_status)
+        ip_row.addWidget(btn_ping)
+        form_layout.addLayout(ip_row)
+
+        self.update_entry_from_combo(self.server_combo.currentText())
+
+        # Options
+        self.force_chk = QCheckBox("Forçar reinício (-Force) mesmo com usuários conectados")
+        self.force_chk.setChecked(True)
+        form_layout.addWidget(self.force_chk)
+
+        # Credentials
+        user_row = QHBoxLayout()
+        user_row.addWidget(QLabel("Usuário (Opcional):"))
+        self.user_entry = QLineEdit()
+        self.user_entry.setPlaceholderText("Ex: DOMINIO\\Administrador")
+        user_row.addWidget(self.user_entry, 1)
+        form_layout.addLayout(user_row)
+
+        pass_row = QHBoxLayout()
+        pass_row.addWidget(QLabel("Senha (Opcional):"))
+        self.pass_entry = QLineEdit()
+        self.pass_entry.setEchoMode(QLineEdit.EchoMode.Password)
+        self.pass_entry.setPlaceholderText("Senha do Usuário")
+        pass_row.addWidget(self.pass_entry, 1)
+        form_layout.addLayout(pass_row)
+
+        layout.addWidget(form_group)
+
+        # Console Log
+        self.log_box = QTextEdit()
+        self.log_box.setReadOnly(True)
+        self.log_box.setStyleSheet("font-family: monospace; font-size: 11px;")
+        layout.addWidget(self.log_box, 1)
+
+        # Footer Buttons
+        footer = QHBoxLayout()
+        self.btn_run = QPushButton("Enviar Comando de Reinício (PowerShell)")
+        self.btn_run.setStyleSheet("background-color: #d9534f; color: white; font-weight: bold; padding: 10px;")
+        self.btn_run.clicked.connect(self.execute_reboot)
+
+        btn_close = QPushButton("Fechar")
+        btn_close.setStyleSheet("padding: 10px;")
+        btn_close.clicked.connect(self.accept)
+
+        footer.addWidget(self.btn_run)
+        footer.addWidget(btn_close)
+        layout.addLayout(footer)
+
+    def get_saved_servers_list(self):
+        c = self.app_config
+        raw_list = c.get("reboot_servers", []) or c.get("servers", [])
+        cleaned = []
+        for item in raw_list:
+            cleaned_item = utils.clean_server_address(item)
+            if cleaned_item and cleaned_item not in cleaned:
+                cleaned.append(cleaned_item)
+        if not cleaned:
+            cleaned = ["127.0.0.1"]
+        return cleaned
+
+    def refresh_servers_combo(self):
+        self.server_combo.clear()
+        self.server_combo.addItems(self.get_saved_servers_list())
+
+    def update_entry_from_combo(self, text):
+        clean_val = utils.clean_server_address(text)
+        if clean_val:
+            self.custom_server_entry.setText(clean_val)
+
+    def append_log(self, msg):
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.log_box.append(f"[{timestamp}] {msg}")
+        self.log_box.verticalScrollBar().setValue(self.log_box.verticalScrollBar().maximum())
+
+    def add_ip_action(self):
+        c = self.app_config
+        new_ip = utils.clean_server_address(self.custom_server_entry.text())
+        if not new_ip:
+            QMessageBox.warning(self, "Aviso", "Informe um IP ou Hostname válido para salvar.")
+            return
+
+        saved = c.get("reboot_servers", [])
+        if new_ip not in [utils.clean_server_address(x) for x in saved]:
+            saved.append(new_ip)
+            c["reboot_servers"] = saved
+            config.save_config(c)
+
+        self.refresh_servers_combo()
+        self.server_combo.setCurrentText(new_ip)
+        self.append_log(f"IP/Host '{new_ip}' adicionado aos servidores salvos.")
+
+    def remove_ip_action(self):
+        c = self.app_config
+        curr = utils.clean_server_address(self.server_combo.currentText())
+        if not curr:
+            return
+        saved = [x for x in c.get("reboot_servers", []) if utils.clean_server_address(x) != curr]
+        c["reboot_servers"] = saved
+        config.save_config(c)
+
+        self.refresh_servers_combo()
+        self.append_log(f"IP/Host '{curr}' removido dos servidores salvos.")
+
+    def test_ping_action(self):
+        target = utils.clean_server_address(self.custom_server_entry.text())
+        if not target:
+            QMessageBox.warning(self, "Aviso", "Informe um IP ou Hostname válido para testar PING.")
+            return
+
+        self.lbl_ping_status.setText("TESTANDO...")
+        self.lbl_ping_status.setStyleSheet("background-color: #e67e22; color: white; font-weight: bold;")
+        self.append_log(f"Enviando PING para '{target}'...")
+
+        def do_ping():
+            is_up = utils.ping_host(target, timeout_sec=2)
+            def update_ping_ui():
+                if is_up:
+                    self.lbl_ping_status.setText("ONLINE")
+                    self.lbl_ping_status.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;")
+                    self.append_log(f"Resposta PING de '{target}': ONLINE (Sucesso)")
+                else:
+                    self.lbl_ping_status.setText("OFFLINE")
+                    self.lbl_ping_status.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold;")
+                    self.append_log(f"Resposta PING de '{target}': OFFLINE (Sem resposta)")
+
+            QTimer.singleShot(0, update_ping_ui)
+
+
+        threading.Thread(target=do_ping, daemon=True).start()
+
+    def execute_reboot(self):
+        raw_target = self.custom_server_entry.text().strip()
+        target_host = utils.clean_server_address(raw_target)
+
+        if not target_host:
+            QMessageBox.warning(self, "Aviso", "Por favor, informe o IP ou nome de servidor limpo de destino.")
+            return
+
+        force = self.force_chk.isChecked()
+        user = self.user_entry.text().strip() or None
+        password = self.pass_entry.text().strip() or None
+
+        confirm_msg = (
+            f"Tem certeza que deseja reiniciar o servidor '{target_host}'?\n\n"
+            f"IP Sanitizado: {target_host}\n"
+            f"Atenção: Se a opção -Force estiver marcada, TODOS os usuários conectados serão desconectados."
+        )
+
+        confirm = QMessageBox.question(self, "Confirmar Reinício Remoto", confirm_msg, QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        self.append_log(f"Iniciando procedimento de reinício para '{target_host}'...")
+        self.btn_run.setEnabled(False)
+        self.btn_run.setText("Enviando comando...")
+        self.lbl_ping_status.setText("ENVIANDO...")
+        self.lbl_ping_status.setStyleSheet("background-color: #e67e22; color: white; font-weight: bold;")
+
+        def run_thread():
+            try:
+                success = utils.restart_remote_server_powershell(
+                    server_name_or_ip=target_host,
+                    force=force,
+                    user=user,
+                    password=password,
+                    log_callback=self.append_log
+                )
+                if not success:
+                    self.lbl_ping_status.setText("FALHA")
+                    self.lbl_ping_status.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold;")
+                    QMessageBox.critical(self, "Erro", f"Não foi possível enviar o comando de reinício para {target_host}.")
+                    return
+
+                self.append_log(f"Comando aceito. Monitorando reinício por PING no host '{target_host}'...")
+                self.lbl_ping_status.setText("REINICIANDO...")
+                self.lbl_ping_status.setStyleSheet("background-color: #d35400; color: white; font-weight: bold;")
+
+                was_offline = False
+                for _ in range(25):
+                    time.sleep(2)
+                    if not utils.ping_host(target_host, timeout_sec=1):
+                        was_offline = True
+                        self.append_log(f"Servidor '{target_host}' ficou OFFLINE (Reinício em andamento).")
+                        self.lbl_ping_status.setText("OFFLINE")
+                        self.lbl_ping_status.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold;")
+                        break
+
+                self.append_log(f"Aguardando o servidor '{target_host}' retornar ONLINE...")
+                is_online = False
+                for _ in range(30):
+                    time.sleep(3)
+                    if utils.ping_host(target_host, timeout_sec=2):
+                        is_online = True
+                        break
+
+                if is_online:
+                    self.lbl_ping_status.setText("ONLINE")
+                    self.lbl_ping_status.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;")
+                    self.append_log(f"SUCESSO! Servidor '{target_host}' está ONLINE novamente.")
+                    QMessageBox.information(self, "Reinício Confirmado", f"O servidor '{target_host}' foi reiniciado e já está ONLINE!")
+                else:
+                    self.lbl_ping_status.setText("AGUARDANDO...")
+                    self.append_log(f"Aviso: O comando foi enviado, mas '{target_host}' ainda não respondeu ao PING.")
+                    QMessageBox.information(self, "Comando Enviado", f"Comando enviado com sucesso para '{target_host}'.")
+            except Exception as ex:
+                self.append_log(f"Erro inesperado: {str(ex)}")
+            finally:
+                self.btn_run.setEnabled(True)
+                self.btn_run.setText("Enviar Comando de Reinício (PowerShell)")
+
+        threading.Thread(target=run_thread, daemon=True).start()
 
 
 class CommonMixin:
     """Popups e utilitários de UI compartilhados entre NBS e Apollo."""
 
     def open_extension_cleanup_popup(self, system_name):
-        """Abre uma janela pop-up modal para pesquisar e excluir arquivos por extensão específica (ex: .log, .tmp)."""
-        c = self.app_config
-
-        # Create window
-        popup = ctk.CTkToplevel(self)
-        title_suffix = "NBS" if system_name == "nbs" else "Linx"
-        popup.title(f"Limpeza por Extensão - {title_suffix}")
-        screen_h = self.winfo_screenheight()
-        target_h = min(660, max(460, screen_h - 100))
-        popup.geometry(f"640x{target_h}")
-        popup.minsize(520, 420)
-        popup.grab_set()  # Make modal
-
-        # Title labels
-        ctk.CTkLabel(popup, text=f"Utilitário de Limpeza por Extensão - {title_suffix}", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, padx=20, pady=(15, 5), sticky="w")
-
-        # Top Control Frame (Directory selection + Path details)
-        top_ctrl = ctk.CTkFrame(popup)
-        top_ctrl.grid(row=1, column=0, padx=20, pady=5, sticky="ew")
-        top_ctrl.grid_columnconfigure(0, weight=1)
-        top_ctrl.grid_columnconfigure(1, weight=3)
-        top_ctrl.grid_columnconfigure(2, weight=1)
-        popup.grid_columnconfigure(0, weight=1)
-
-        folder_label_text = "Pasta NBS a Limpar:" if system_name == "nbs" else "Pasta Linx a Limpar:"
-        ctk.CTkLabel(top_ctrl, text=folder_label_text, font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=10, pady=5, sticky="w")
-
-        custom_path_var = ctk.StringVar(value="")
-
-        # Directory resolution helper
-        def get_resolved_path(dir_key):
-            if system_name == "nbs":
-                if dir_key == "C:\\NBS":
-                    return c.get("nbs_path_win", "C:\\NBS") if self.os_type == "Windows" else c.get("nbs_path_linux", "./NBS_Local")
-            else: # linx
-                if dir_key == "C:\\Apollo":
-                    return "C:\\Apollo" if self.os_type == "Windows" else "./Apollo"
-                elif dir_key == "C:\\3camadas":
-                    return "C:\\3camadas" if self.os_type == "Windows" else "./3Camadas"
-            
-            if dir_key == "Outro Diretório...":
-                return custom_path_var.get()
-            return ""
-
-        # OptionMenu selection
-        default_val = "C:\\NBS" if system_name == "nbs" else "C:\\Apollo"
-        menu_values = ["C:\\NBS", "Outro Diretório..."] if system_name == "nbs" else ["C:\\Apollo", "C:\\3camadas", "Outro Diretório..."]
-        
-        dir_var = ctk.StringVar(value=default_val)
-        dir_label_path = ctk.CTkLabel(popup, text="Caminho: -", font=ctk.CTkFont(size=11, slant="italic"), anchor="w")
-        dir_label_path.grid(row=2, column=0, padx=20, pady=(2, 8), sticky="w")
-
-        # Extension Input Frame (Row 3)
-        ext_input_frame = ctk.CTkFrame(popup)
-        ext_input_frame.grid(row=3, column=0, padx=20, pady=5, sticky="ew")
-        ext_input_frame.grid_columnconfigure(1, weight=1)
-
-        ctk.CTkLabel(ext_input_frame, text="Extensão de arquivo (ex: .log, .tmp, .zip):", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=10, pady=8, sticky="w")
-        ext_entry = ctk.CTkEntry(ext_input_frame, placeholder_text=".log")
-        ext_entry.grid(row=0, column=1, padx=10, pady=8, sticky="ew")
-        ext_entry.insert(0, ".log")
-
-        # Search/Filter Frame (Row 4)
-        filter_frame = ctk.CTkFrame(popup)
-        filter_frame.grid(row=4, column=0, padx=20, pady=5, sticky="ew")
-        filter_frame.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(filter_frame, text="Pesquisa / Filtro (Glob/Regex):", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=10, pady=(5, 0), sticky="w")
-        
-        filter_entry_frame = ctk.CTkFrame(filter_frame, fg_color="transparent")
-        filter_entry_frame.grid(row=1, column=0, padx=10, pady=5, sticky="ew")
-        filter_entry_frame.grid_columnconfigure(0, weight=1)
-
-        filter_entry = ctk.CTkEntry(filter_entry_frame, placeholder_text="Ex: *log* ou ^NBSErr.*\\.log$")
-        filter_entry.grid(row=0, column=0, sticky="ew")
-
-        # Selection tracking dictionaries
-        all_files_found = []
-        file_checkboxes_widgets = []
-        checkbox_selections = {} # Stores {filepath: BooleanVar}
-
-        # Scroll frame for items list (Row 5)
-        scroll_frame = ctk.CTkScrollableFrame(popup, label_text="Arquivos Encontrados")
-        scroll_frame.grid(row=5, column=0, padx=20, pady=10, sticky="nsew")
-        popup.grid_rowconfigure(5, weight=1)
-
-        # Glob / Regex matching logic
-        import fnmatch
-        import re
-
-        def matches_pattern(filename, pattern):
-            if not pattern:
-                return True
-            pattern = pattern.strip()
-            if "*" in pattern or "?" in pattern:
-                try:
-                    return fnmatch.fnmatchcase(filename.lower(), pattern.lower())
-                except Exception:
-                    pass
-            try:
-                regex = re.compile(pattern, re.IGNORECASE)
-                return bool(regex.search(filename))
-            except Exception:
-                pass
-            return pattern.lower() in filename.lower()
-
-        # Render list based on filter
-        def populate_list():
-            for w in file_checkboxes_widgets:
-                try:
-                    w.destroy()
-                except Exception:
-                    pass
-            file_checkboxes_widgets.clear()
-
-            target_path = get_resolved_path(dir_var.get())
-            dir_label_path.configure(text=f"Diretório ativo: {os.path.abspath(target_path)}")
-
-            if not os.path.exists(target_path):
-                err_lbl = ctk.CTkLabel(scroll_frame, text="Caminho do diretório não encontrado no sistema.", font=ctk.CTkFont(slant="italic"))
-                err_lbl.grid(row=0, column=0, padx=10, pady=10, sticky="w")
-                file_checkboxes_widgets.append(err_lbl)
-                return
-
-            filter_text = filter_entry.get().strip()
-
-            filtered_files = []
-            for f in all_files_found:
-                if matches_pattern(f, filter_text):
-                    filtered_files.append(f)
-
-            if not filtered_files:
-                ext_str = ext_entry.get().strip()
-                empty_lbl = ctk.CTkLabel(scroll_frame, text=f"Nenhum arquivo {ext_str} corresponde à pesquisa.", font=ctk.CTkFont(slant="italic"))
-                empty_lbl.grid(row=0, column=0, padx=10, pady=10, sticky="w")
-                file_checkboxes_widgets.append(empty_lbl)
-                return
-
-            for idx, filename in enumerate(filtered_files):
-                full_path = os.path.join(target_path, filename)
-                
-                if full_path not in checkbox_selections:
-                    checkbox_selections[full_path] = ctk.BooleanVar(value=False)
-                
-                try:
-                    stats = os.stat(full_path)
-                    size_mb = stats.st_size / (1024 * 1024)
-                    mtime = datetime.fromtimestamp(stats.st_mtime).strftime("%d/%m/%Y %H:%M")
-                    details = f" ({size_mb:.2f} MB) - {mtime}"
-                except Exception:
-                    details = ""
-
-                chk = ctk.CTkCheckBox(scroll_frame, text=f"{filename}{details}", variable=checkbox_selections[full_path])
-                chk.grid(row=idx, column=0, padx=10, pady=4, sticky="w")
-                file_checkboxes_widgets.append(chk)
-
-        # Scans directory and resets files tracking
-        def browse_custom_dir():
-            from tkinter import filedialog
-            selected = filedialog.askdirectory(parent=popup, title="Selecionar pasta para limpeza")
-            if selected:
-                custom_path_var.set(selected)
-                dir_var.set("Outro Diretório...")
-                scan_directory()
-
-        def scan_directory():
-            all_files_found.clear()
-            checkbox_selections.clear()
-            
-            target_path = get_resolved_path(dir_var.get())
-            if dir_var.get() == "Outro Diretório..." and not target_path:
-                browse_custom_dir()
-                return
-
-            ext_str = ext_entry.get().strip().lower()
-            if not ext_str.startswith("."):
-                ext_str = "." + ext_str
-
-            if os.path.exists(target_path):
-                try:
-                    for name in os.listdir(target_path):
-                        if os.path.isfile(os.path.join(target_path, name)):
-                            name_lower = name.lower()
-                            if name_lower.endswith(ext_str):
-                                all_files_found.append(name)
-                    all_files_found.sort()
-                except Exception as err:
-                    print(f"Erro ao escanear diretório: {str(err)}")
-            populate_list()
-
-        # Selection helpers for filtered items
-        def select_filtered(state):
-            filter_text = filter_entry.get().strip()
-            target_path = get_resolved_path(dir_var.get())
-            
-            for filename in all_files_found:
-                if matches_pattern(filename, filter_text):
-                    full_path = os.path.join(target_path, filename)
-                    if full_path in checkbox_selections:
-                        checkbox_selections[full_path].set(state)
-
-        # Bind events
-        ext_entry.bind("<Return>", lambda e: scan_directory())
-        ext_entry.bind("<FocusOut>", lambda e: scan_directory())
-
-        # UI Actions
-        dir_menu = ctk.CTkOptionMenu(top_ctrl, variable=dir_var, values=menu_values, command=lambda v: scan_directory())
-        dir_menu.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
-
-        btn_browse = ctk.CTkButton(top_ctrl, text="Pesquisar...", width=95, command=browse_custom_dir)
-        btn_browse.grid(row=0, column=2, padx=(0, 10), pady=5)
-
-        # Search/Filter action buttons
-        btn_apply = ctk.CTkButton(filter_entry_frame, text="Filtrar", width=80, command=populate_list)
-        btn_apply.grid(row=0, column=1, padx=(5, 0))
-
-        btn_clear = ctk.CTkButton(filter_entry_frame, text="Limpar", width=80, fg_color="transparent", border_width=1, command=lambda: [filter_entry.delete(0, "end"), populate_list()])
-        btn_clear.grid(row=0, column=2, padx=(5, 0))
-
-        # Search button next to extension entry
-        btn_search_ext = ctk.CTkButton(ext_input_frame, text="Buscar arquivos", width=120, command=scan_directory)
-        btn_search_ext.grid(row=0, column=2, padx=10, pady=8)
-
-        # Selection Control Row (Row 6)
-        sel_ctrl_frame = ctk.CTkFrame(popup, fg_color="transparent")
-        sel_ctrl_frame.grid(row=6, column=0, padx=20, pady=2, sticky="ew")
-        sel_ctrl_frame.grid_columnconfigure(0, weight=1)
-        sel_ctrl_frame.grid_columnconfigure(1, weight=1)
-
-        btn_check_all = ctk.CTkButton(sel_ctrl_frame, text="Marcar Filtrados", height=24, fg_color="#34495e", hover_color="#2c3e50", font=ctk.CTkFont(size=11), command=lambda: select_filtered(True))
-        btn_check_all.grid(row=0, column=0, padx=(0, 5), sticky="ew")
-
-        btn_uncheck_all = ctk.CTkButton(sel_ctrl_frame, text="Desmarcar Filtrados", height=24, fg_color="#34495e", hover_color="#2c3e50", font=ctk.CTkFont(size=11), command=lambda: select_filtered(False))
-        btn_uncheck_all.grid(row=0, column=1, padx=(5, 0), sticky="ew")
-
-        # Footer Frame (Row 7)
-        footer = ctk.CTkFrame(popup, fg_color="transparent")
-        footer.grid(row=7, column=0, padx=20, pady=(10, 15), sticky="ew")
-        footer.grid_columnconfigure(0, weight=1)
-        footer.grid_columnconfigure(1, weight=1)
-
-        # Delete Action
-        def on_delete_clicked():
-            to_delete = [path for path, var in checkbox_selections.items() if var.get()]
-            if not to_delete:
-                messagebox.showwarning("Aviso", "Nenhum arquivo selecionado para exclusão.", parent=popup)
-                return
-            
-            total_sel = len(to_delete)
-            confirm_msg = f"Tem certeza de que deseja EXCLUIR DEFINITIVAMENTE os {total_sel} arquivo(s) selecionado(s)?\n\n"
-            max_preview = 6
-            for p in to_delete[:max_preview]:
-                confirm_msg += f"• {os.path.basename(p)}\n"
-            
-            if total_sel > max_preview:
-                confirm_msg += f"\n... e mais {total_sel - max_preview} arquivo(s) selecionado(s)."
-            
-            confirm = messagebox.askyesno("Confirmar Exclusão", confirm_msg, parent=popup)
-            if confirm:
-                deleted_count = 0
-                errors = []
-                for p in to_delete:
-                    try:
-                        os.remove(p)
-                        deleted_count += 1
-                    except Exception as err:
-                        errors.append(f"{os.path.basename(p)}: {str(err)}")
-                
-                if errors:
-                    max_err_preview = 5
-                    err_msg = f"Foram excluídos {deleted_count} de {total_sel} arquivos.\n\nErros ocorridos:\n"
-                    err_msg += "\n".join(errors[:max_err_preview])
-                    if len(errors) > max_err_preview:
-                        err_msg += f"\n... e mais {len(errors) - max_err_preview} erro(s)."
-                    messagebox.showerror("Exclusão Parcial", err_msg, parent=popup)
-                else:
-                    messagebox.showinfo("Sucesso", f"Todos os {deleted_count} arquivos selecionados foram excluídos com sucesso!", parent=popup)
-                
-                scan_directory()
-
-        delete_btn = ctk.CTkButton(footer, text="Excluir Selecionados", font=ctk.CTkFont(size=13, weight="bold"), fg_color="#d9534f", hover_color="#c9302c", height=38, command=on_delete_clicked)
-        delete_btn.grid(row=0, column=0, padx=(0, 5), sticky="ew")
-
-        close_btn = ctk.CTkButton(footer, text="Fechar", height=38, fg_color="transparent", border_width=1, command=popup.destroy)
-        close_btn.grid(row=0, column=1, padx=(5, 0), sticky="ew")
-
-        # Load files initial list
-        scan_directory()
-
+        dialog = ExtensionCleanupDialog(self, system_name=system_name)
+        dialog.exec()
 
     def open_powershell_restart_popup(self, system_name="nbs"):
-        """Abre uma janela pop-up modal para configurar, enviar o comando de reinício remoto e monitorar via PING."""
-        c = self.app_config
-
-        popup = ctk.CTkToplevel(self)
-        sys_title = "NBS" if system_name.lower() == "nbs" else "Linx"
-        popup.title(f"Reinício de Servidores via PowerShell - {sys_title}")
-        popup.geometry("680x620")
-        popup.minsize(580, 540)
-        popup.grab_set()
-
-        # Title
-        ctk.CTkLabel(popup, text=f"Reinício Remoto de Servidor ({sys_title})", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, padx=20, pady=(15, 2), sticky="w")
-        ctk.CTkLabel(popup, text="Envio de comando PowerShell Restart-Computer e monitoramento de status por PING.", font=ctk.CTkFont(size=11)).grid(row=1, column=0, padx=20, pady=(0, 10), sticky="w")
-
-        popup.grid_columnconfigure(0, weight=1)
-
-        # Form Frame
-        form_frame = ctk.CTkFrame(popup)
-        form_frame.grid(row=2, column=0, padx=20, pady=5, sticky="ew")
-        form_frame.grid_columnconfigure(1, weight=1)
-
-        # Helper to get clean list of saved IP/servers
-        def get_saved_servers_list():
-            raw_list = c.get("reboot_servers", []) or c.get("servers", [])
-            cleaned = []
-            for item in raw_list:
-                cleaned_item = utils.clean_server_address(item)
-                if cleaned_item and cleaned_item not in cleaned:
-                    cleaned.append(cleaned_item)
-            if not cleaned:
-                cleaned = ["127.0.0.1"]
-            return cleaned
-
-        servers_options = get_saved_servers_list()
-
-        # 1. Server Selection / Custom IP
-        ctk.CTkLabel(form_frame, text="IP / Host Salvo:", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=15, pady=(12, 5), sticky="w")
-
-        server_var = ctk.StringVar(value=servers_options[0] if servers_options else "")
-        server_dropdown = ctk.CTkOptionMenu(form_frame, variable=server_var, values=servers_options)
-        server_dropdown.grid(row=0, column=1, padx=(15, 5), pady=(12, 5), sticky="ew")
-
-        # IP Management buttons (+ / -)
-        btn_manage_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
-        btn_manage_frame.grid(row=0, column=2, padx=(0, 15), pady=(12, 5), sticky="e")
-
-        def add_ip_action():
-            new_ip = custom_server_entry.get().strip()
-            new_ip_clean = utils.clean_server_address(new_ip)
-            if not new_ip_clean:
-                messagebox.showwarning("Aviso", "Informe um IP ou Hostname válido para salvar.", parent=popup)
-                return
-            
-            saved = c.get("reboot_servers", [])
-            if new_ip_clean not in [utils.clean_server_address(x) for x in saved]:
-                saved.append(new_ip_clean)
-                c["reboot_servers"] = saved
-                config.save_config(c)
-                
-            new_opts = get_saved_servers_list()
-            server_dropdown.configure(values=new_opts)
-            server_var.set(new_ip_clean)
-            append_log(f"IP/Host '{new_ip_clean}' adicionado à lista de servidores salvos.")
-
-        def remove_ip_action():
-            curr = utils.clean_server_address(server_var.get())
-            if not curr:
-                return
-            saved = c.get("reboot_servers", [])
-            saved = [x for x in saved if utils.clean_server_address(x) != curr]
-            c["reboot_servers"] = saved
-            config.save_config(c)
-            
-            new_opts = get_saved_servers_list()
-            server_dropdown.configure(values=new_opts)
-            server_var.set(new_opts[0] if new_opts else "")
-            append_log(f"IP/Host '{curr}' removido da lista de servidores salvos.")
-
-        ctk.CTkButton(btn_manage_frame, text="+ Salvar", width=65, font=ctk.CTkFont(size=11, weight="bold"), command=add_ip_action).grid(row=0, column=0, padx=2)
-        ctk.CTkButton(btn_manage_frame, text="- Remover", width=70, font=ctk.CTkFont(size=11, weight="bold"), fg_color="#c0392b", hover_color="#e74c3c", command=remove_ip_action).grid(row=0, column=1, padx=2)
-
-        # 2. Clean IP Entry & PING test button
-        ctk.CTkLabel(form_frame, text="IP / Host Limpo:", font=ctk.CTkFont(size=12)).grid(row=1, column=0, padx=15, pady=5, sticky="w")
-        
-        entry_ping_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
-        entry_ping_frame.grid(row=1, column=1, columnspan=2, padx=15, pady=5, sticky="ew")
-        entry_ping_frame.grid_columnconfigure(0, weight=1)
-
-        custom_server_entry = ctk.CTkEntry(entry_ping_frame, placeholder_text="Ex: 192.168.1.100 ou SERVIDOR-02")
-        custom_server_entry.grid(row=0, column=0, sticky="ew", padx=(0, 5))
-
-        lbl_ping_status = ctk.CTkLabel(entry_ping_frame, text="DESCONHECIDO", font=ctk.CTkFont(size=10, weight="bold"), fg_color="#7f8c8d", text_color="white", corner_radius=6, height=24, width=100)
-        lbl_ping_status.grid(row=0, column=1, padx=5)
-
-        def update_entry_from_dropdown(*args):
-            raw_val = server_var.get()
-            clean_val = utils.clean_server_address(raw_val)
-            custom_server_entry.delete(0, "end")
-            if clean_val:
-                custom_server_entry.insert(0, clean_val)
-
-        server_var.trace_add("write", update_entry_from_dropdown)
-        update_entry_from_dropdown()
-
-        def test_ping_action():
-            target = utils.clean_server_address(custom_server_entry.get())
-            if not target:
-                messagebox.showwarning("Aviso", "Informe um IP ou Hostname válido para testar PING.", parent=popup)
-                return
-
-            lbl_ping_status.configure(text="TESTANDO...", fg_color="#e67e22")
-            append_log(f"Enviando PING para '{target}'...")
-
-            def do_ping():
-                is_up = utils.ping_host(target, timeout_sec=2)
-                if is_up:
-                    self.after(0, lambda: lbl_ping_status.configure(text="ONLINE", fg_color="#27ae60"))
-                    self.after(0, lambda: append_log(f"Resposta PING de '{target}': ONLINE (Sucesso)"))
-                else:
-                    self.after(0, lambda: lbl_ping_status.configure(text="OFFLINE", fg_color="#c0392b"))
-                    self.after(0, lambda: append_log(f"Resposta PING de '{target}': OFFLINE (Sem resposta)"))
-
-            threading.Thread(target=do_ping, daemon=True).start()
-
-        btn_test_ping = ctk.CTkButton(entry_ping_frame, text="Testar PING", width=85, font=ctk.CTkFont(size=11, weight="bold"), command=test_ping_action)
-        btn_test_ping.grid(row=0, column=2, padx=(5, 0))
-
-        # 3. Force Option Checkbox
-        force_var = ctk.BooleanVar(value=True)
-        force_chk = ctk.CTkCheckBox(
-            form_frame, 
-            text="Forçar reinício (-Force) mesmo com usuários conectados", 
-            variable=force_var,
-            font=ctk.CTkFont(weight="bold")
-        )
-        force_chk.grid(row=2, column=0, columnspan=3, padx=15, pady=10, sticky="w")
-
-        # 4. Optional Credentials
-        ctk.CTkLabel(form_frame, text="Usuário (Opcional):", font=ctk.CTkFont(size=12)).grid(row=3, column=0, padx=15, pady=5, sticky="w")
-        user_entry = ctk.CTkEntry(form_frame, placeholder_text="Ex: DOMINIO\\Administrador")
-        user_entry.grid(row=3, column=1, columnspan=2, padx=15, pady=5, sticky="ew")
-
-        ctk.CTkLabel(form_frame, text="Senha (Opcional):", font=ctk.CTkFont(size=12)).grid(row=4, column=0, padx=15, pady=(5, 12), sticky="w")
-        pass_entry = ctk.CTkEntry(form_frame, placeholder_text="Senha do Usuário", show="*")
-        pass_entry.grid(row=4, column=1, columnspan=2, padx=15, pady=(5, 12), sticky="ew")
-
-        # Log Textbox inside popup
-        log_box = ctk.CTkTextbox(popup, height=130)
-        log_box.grid(row=3, column=0, padx=20, pady=10, sticky="nsew")
-        popup.grid_rowconfigure(3, weight=1)
-
-        def append_log(msg):
-            timestamp = datetime.now().strftime("%H:%M:%S")
-            log_box.insert("end", f"[{timestamp}] {msg}\n")
-            log_box.see("end")
-
-        # Execute Action & Ping Reboot Monitor
-        def execute_reboot():
-            raw_target = custom_server_entry.get().strip()
-            target_host = utils.clean_server_address(raw_target)
-            
-            if not target_host:
-                messagebox.showwarning("Aviso", "Por favor, informe o IP ou nome de servidor limpo de destino.", parent=popup)
-                return
-
-            force = force_var.get()
-            user = user_entry.get().strip() or None
-            password = pass_entry.get().strip() or None
-
-            confirm_msg = (
-                f"Tem certeza que deseja reiniciar o servidor '{target_host}'?\n\n"
-                f"IP Sanitizado: {target_host}\n"
-                f"Atenção: Se a opção -Force estiver marcada, TODOS os usuários conectados serão desconectados."
-            )
-            
-            if not messagebox.askyesno("Confirmar Reinício Remoto", confirm_msg, parent=popup, icon="warning"):
-                return
-
-            append_log(f"Iniciando procedimento de reinício para '{target_host}'...")
-            btn_run.configure(state="disabled", text="Enviando comando...")
-            lbl_ping_status.configure(text="ENVIANDO...", fg_color="#e67e22")
-
-            def run_thread():
-                try:
-                    success = utils.restart_remote_server_powershell(
-                        server_name_or_ip=target_host,
-                        force=force,
-                        user=user,
-                        password=password,
-                        log_callback=append_log
-                    )
-                    if not success:
-                        self.after(0, lambda: lbl_ping_status.configure(text="FALHA", fg_color="#c0392b"))
-                        self.after(0, lambda: messagebox.showerror("Erro", f"Não foi possível enviar o comando de reinício para {target_host}.", parent=popup))
-                        return
-
-                    self.after(0, lambda: append_log(f"Comando aceito. Monitorando reinício por PING no host '{target_host}'..."))
-                    self.after(0, lambda: lbl_ping_status.configure(text="REINICIANDO...", fg_color="#d35400"))
-                    
-                    # Phase 1: Wait for host to go OFFLINE (confirm shutdown/reboot started)
-                    was_offline = False
-                    for _ in range(25): # Wait up to ~50s for shutdown
-                        time.sleep(2)
-                        if not utils.ping_host(target_host, timeout_sec=1):
-                            was_offline = True
-                            self.after(0, lambda: append_log(f"Servidor '{target_host}' ficou OFFLINE (Reinício confirmado em andamento)."))
-                            self.after(0, lambda: lbl_ping_status.configure(text="OFFLINE (REBOOT)", fg_color="#c0392b"))
-                            break
-
-                    if not was_offline:
-                        self.after(0, lambda: append_log(f"Aviso: Servidor '{target_host}' não aparenta ter desligado via PING (ou reiniciou extremamente rápido)."))
-
-                    # Phase 2: Wait for host to return ONLINE (confirm boot up)
-                    self.after(0, lambda: append_log(f"Aguardando o servidor '{target_host}' retornar ONLINE..."))
-                    is_online = False
-                    for _ in range(30): # Wait up to ~90s for boot
-                        time.sleep(3)
-                        if utils.ping_host(target_host, timeout_sec=2):
-                            is_online = True
-                            break
-
-                    if is_online:
-                        self.after(0, lambda: lbl_ping_status.configure(text="REINICIADO (ONLINE)", fg_color="#27ae60"))
-                        self.after(0, lambda: append_log(f"SUCESSO! Servidor '{target_host}' respondeu ao PING e está ONLINE novamente."))
-                        self.after(0, lambda: messagebox.showinfo("Reinício Confirmado", f"O servidor '{target_host}' foi reiniciado e já está ONLINE novamente!", parent=popup))
-                    else:
-                        self.after(0, lambda: lbl_ping_status.configure(text="AGUARDANDO PING...", fg_color="#e67e22"))
-                        self.after(0, lambda: append_log(f"Aviso: O comando foi enviado, mas o servidor '{target_host}' ainda não respondeu ao PING após o tempo limite."))
-                        self.after(0, lambda: messagebox.showinfo("Comando Enviado", f"Comando enviado com sucesso para '{target_host}'.\nO servidor ainda pode estar finalizando a inicialização.", parent=popup))
-
-                except Exception as ex:
-                    self.after(0, lambda: append_log(f"Erro inesperado: {str(ex)}"))
-                    self.after(0, lambda: messagebox.showerror("Erro", f"Exceção durante a execução: {str(ex)}", parent=popup))
-                finally:
-                    self.after(0, lambda: btn_run.configure(state="normal", text="Enviar Comando de Reinício (PowerShell)"))
-
-            threading.Thread(target=run_thread, daemon=True).start()
-
-        # Button Frame
-        btn_frame = ctk.CTkFrame(popup, fg_color="transparent")
-        btn_frame.grid(row=4, column=0, padx=20, pady=(0, 15), sticky="ew")
-        btn_frame.grid_columnconfigure(0, weight=1)
-
-        btn_run = ctk.CTkButton(
-            btn_frame, 
-            text="Enviar Comando de Reinício (PowerShell)", 
-            fg_color="#D32F2F", 
-            hover_color="#9A0007",
-            font=ctk.CTkFont(weight="bold"),
-            height=38,
-            command=execute_reboot
-        )
-        btn_run.grid(row=0, column=0, padx=(0, 5), sticky="ew")
-
-        btn_close = ctk.CTkButton(
-            btn_frame, 
-            text="Fechar", 
-            width=100,
-            height=38,
-            fg_color="transparent",
-            border_width=1,
-            command=popup.destroy
-        )
-        btn_close.grid(row=0, column=1, padx=(5, 0), sticky="e")
-
-
+        dialog = RemoteRebootDialog(self, system_name=system_name)
+        dialog.exec()

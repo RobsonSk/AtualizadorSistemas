@@ -66,11 +66,15 @@ DEFAULT_CONFIG = {
     "linx_backup_apollo": False,
     "linx_kill_process_pattern": "wsContabil",
     "linx_url_integrador_template": "https://distribuicao.blob.core.windows.net/dms/DVI/LinxDMSIntegrador.zip",
+    "crm_gold_cmd": "C:\\Java\\Update_BSC_CRMGold\\WEUpdate.exe -suporte",
+    "crm_parts_cmd": "C:\\Java\\JManagerClient\\JManagerClient.exe -suporte -disablehash",
     "crm_service_payara": "domain1",
     "nbs_notes": "",
     "linx_notes": "",
     "last_apollo_backup_zip": ""
 }
+
+
 
 def encrypt_data(data_str: str) -> str:
     """XOR data with key and return base64 encoded string."""

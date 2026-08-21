@@ -1,35 +1,48 @@
-# Byte-compiled / optimized / DLL support
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Virtual Environment
-venv/
-ENV/
-env/
-.env
-
-# Configuration Files (containing local paths and credentials)
-config.json
-
-# Local directories created by the application for downloads/updates
-Atualizacao/
-AtualizacaoLinx/
-NBS_Local/
-Apollo/
-Apollo_Atualiza/
-3Camadas/
-3Camadas_Atualiza/
-scratch/
-
-# Standalone distribution tool (ignored for git)
-distribuidor_rede/
-
-# IDE files
-.idea/
-.vscode/
-
-# Build artifacts (PyInstaller)
+# PyInstaller / Build outputs
 build/
 dist/
 *.spec
+!AtualizadorSistemas.spec
+!AtualizadorNBS.spec
+
+# Binaries & Executables
+*.exe
+*.dll
+*.so
+*.dylib
+*.bin
+
+# Environment & Virtualenvs
+venv/
+.venv/
+env/
+ENV/
+
+# Configuration and Local AppData / Encrypted configs / Logs
+config.enc
+config.json
+license.enc
+secret.key
+debug.log
+*.log
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Ignored folders and modules not sent to Git
+ignore/
+distribuidor_rede/
+
+# Agent & Local temporary files
+.agents/
+screenshots/
+tela.PNG
+test_ftp.py

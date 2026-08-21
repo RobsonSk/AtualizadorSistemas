@@ -1,135 +1,269 @@
 import os
 import sys
-import re
 import platform
 import threading
 import time
 from datetime import datetime
-from tkinter import filedialog, messagebox
-import shutil
 
-import customtkinter as ctk
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QPushButton, QLabel, QFrame, QStackedWidget, QMessageBox, QGroupBox
+)
 
 import config
-import ftp_client
 import utils
-from ui_nbs import NBSMixin
+from ui_nbs import NBSMixin, set_entry_text, get_entry_text
 from ui_apollo import ApolloMixin
 from ui_common import CommonMixin
-
-# Set application appearance and theme
-ctk.set_appearance_mode("Dark")  # Modes: "System", "Dark", "Light"
-ctk.set_default_color_theme("blue")  # Themes: "blue", "green", "dark-blue"
-
-# Ajuste global para corrigir a cor do texto no modo claro (evitando texto branco/claro em fundo claro)
-ctk.ThemeManager.theme["CTkButton"]["text_color"] = ["#000000", "#FFFFFF"]
-if "CTkOptionMenu" in ctk.ThemeManager.theme:
-    ctk.ThemeManager.theme["CTkOptionMenu"]["text_color"] = ["#000000", "#FFFFFF"]
-if "CTkSegmentedButton" in ctk.ThemeManager.theme:
-    ctk.ThemeManager.theme["CTkSegmentedButton"]["text_color"] = ["#000000", "#FFFFFF"]
+from license_gatekeeper import enforce_license_gatekeeper, start_background_license_checker
 
 
-class AtualizadorApp(ctk.CTk, NBSMixin, ApolloMixin, CommonMixin):
+DARK_QSS = """
+QMainWindow {
+    background-color: #1e1e2e;
+}
+QWidget {
+    background-color: #1e1e2e;
+    color: #cdd6f4;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 13px;
+}
+QFrame#sidebar {
+    background-color: #181825;
+    border-right: 1px solid #313244;
+}
+QGroupBox {
+    border: 1px solid #45475a;
+    border-radius: 8px;
+    margin-top: 12px;
+    font-weight: bold;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 5px;
+    color: #89b4fa;
+}
+QPushButton {
+    background-color: #313244;
+    color: #cdd6f4;
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    padding: 6px 12px;
+}
+QPushButton:hover {
+    background-color: #45475a;
+}
+QPushButton:pressed {
+    background-color: #585b70;
+}
+QLineEdit, QTextEdit, QComboBox, QListWidget {
+    background-color: #181825;
+    color: #cdd6f4;
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    padding: 6px;
+}
+QLineEdit:focus, QTextEdit:focus, QComboBox:focus {
+    border: 1px solid #89b4fa;
+}
+QProgressBar {
+    background-color: #181825;
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    text-align: center;
+}
+QProgressBar::chunk {
+    background-color: #89b4fa;
+    border-radius: 6px;
+}
+QScrollBar:vertical {
+    background: #181825;
+    width: 10px;
+}
+QScrollBar::handle:vertical {
+    background: #45475a;
+    border-radius: 5px;
+}
+"""
+
+
+class AtualizadorApp(QMainWindow, NBSMixin, ApolloMixin, CommonMixin):
+    brands_fetched_signal = Signal(list)
+    brands_failed_signal = Signal(str)
+    log_debug_signal = Signal(str)
+    dl_log_signal = Signal(str)
+    dl_status_signal = Signal(str)
+    dl_progress_signal = Signal(int)
+    dl_finished_signal = Signal(bool, str)
+    exec_log_signal = Signal(str)
+    exec_status_signal = Signal(str)
+    exec_finished_signal = Signal(bool, str)
+    linx_dl_log_signal = Signal(str)
+    linx_dl_status_signal = Signal(str)
+    linx_dl_progress_signal = Signal(int)
+    linx_dl_finished_signal = Signal(bool, str)
+    linx_update_log_signal = Signal(str)
+    linx_update_status_signal = Signal(str)
+    linx_update_progress_signal = Signal(int)
+    linx_update_finished_signal = Signal(bool, str)
+    linx_services_refreshed_signal = Signal(dict)
+    show_info_dialog_signal = Signal(str, str)
+    show_warning_dialog_signal = Signal(str, str)
+
     def __init__(self):
         super().__init__()
 
-        # Load configurations
+        # Connect Qt thread signals to UI slots
+        self.brands_fetched_signal.connect(self.on_brands_fetched_success)
+        self.brands_failed_signal.connect(self.on_brands_fetched_failed)
+        self.log_debug_signal.connect(self.append_log_debug_ui)
+        self.dl_log_signal.connect(self.log_dl_ui)
+        self.dl_status_signal.connect(self.status_dl_ui)
+        self.dl_progress_signal.connect(self.progress_dl_ui)
+        self.dl_finished_signal.connect(self.on_download_process_finished)
+        self.exec_log_signal.connect(self.log_exec_ui)
+        self.exec_status_signal.connect(self.status_exec_ui)
+        self.exec_finished_signal.connect(self.on_script_execution_finished)
+        self.linx_dl_log_signal.connect(self.log_linx_dl_ui)
+        self.linx_dl_status_signal.connect(self.status_linx_dl_ui)
+        self.linx_dl_progress_signal.connect(self.progress_linx_dl_ui)
+        self.linx_dl_finished_signal.connect(self.on_linx_download_finished)
+        self.linx_update_log_signal.connect(self.log_linx_update_ui)
+        self.linx_update_status_signal.connect(self.status_linx_update_ui)
+        self.linx_update_progress_signal.connect(self.progress_linx_update_ui)
+        self.linx_update_finished_signal.connect(self.on_linx_update_finished)
+        self.linx_services_refreshed_signal.connect(self.on_services_refreshed)
+        self.show_info_dialog_signal.connect(lambda title, msg: QMessageBox.information(self, title, msg))
+        self.show_warning_dialog_signal.connect(lambda title, msg: QMessageBox.warning(self, title, msg))
+
+
+
+
+
+
+
         self.app_config = config.load_config()
         self.os_type = platform.system()
+        self.loading_config = False
 
-        # Apply saved appearance mode
-        ctk.set_appearance_mode(self.app_config.get("appearance_mode", "Dark"))
+        # Periodic background license checker
+        start_background_license_checker(self, "AtualizadorSistemas")
 
-        # Window properties
-        self.title("Atualizador Sistemas")
-        self.geometry("1020x700")
-        self.minsize(950, 640)
+        self.setWindowTitle("Atualizador Sistemas")
+        self.resize(1020, 700)
+        self.setMinimumSize(950, 640)
 
-        # Track UI variables
-        self.ftp_password_visible = False
-        self.db_credentials_visible = False
-        self.brands_list = []
-        self.brand_checkboxes = {}  # {brand_name: CTkCheckBox}
-        self.brand_widgets_in_grid = []
-        self.latest_downloaded_script = ""
-        self.download_paused = False
-        self.download_cancelled = False
-        self.current_downloading_file = None
-
-        # Track Linx UI variables
-        self.linx_download_paused = False
-        self.linx_download_cancelled = False
-        self.linx_current_downloading_file = None
-        self.linx_updating = False
-        self.linx_update_cancelled = False
-        self.mock_service_states = {
-            "DFeServico": "ONLINE",
-            "RedirecionaDatasnap": "OFFLINE",
-            "VerificaServer3Camadas": "OFFLINE"
-        }
-
-        # ----------------- SYSTEM SELECTION SCREEN -----------------
-        self.frame_system_selection = ctk.CTkFrame(self, fg_color="transparent")
-
-        # Layout Setup (Sidebar + Content Area) - They will be gridded dynamically
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=5)
-        self.grid_rowconfigure(0, weight=1)
+        # Main Central Container
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        self.main_layout = QHBoxLayout(central_widget)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
 
         # ----------------- SIDEBAR -----------------
-        self.sidebar_frame = ctk.CTkFrame(self, width=220, corner_radius=0)
-        self.sidebar_frame.grid_rowconfigure(9, weight=1)  # Spacer row (pushed down)
+        self.sidebar_frame = QFrame()
+        self.sidebar_frame.setObjectName("sidebar")
+        self.sidebar_frame.setFixedWidth(220)
+        self.sidebar_layout = QVBoxLayout(self.sidebar_frame)
+        self.sidebar_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        self.logo_label = ctk.CTkLabel(self.sidebar_frame, text="NBS Atualizador", font=ctk.CTkFont(size=20, weight="bold"))
-        self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 5))
-        
-        self.os_label = ctk.CTkLabel(self.sidebar_frame, text=f"S.O.: {self.os_type}", font=ctk.CTkFont(size=12, slant="italic"))
-        self.os_label.grid(row=1, column=0, padx=20, pady=(0, 20))
+        self.logo_label = QLabel("NBS Atualizador")
+        self.logo_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #89b4fa;")
+        self.os_label = QLabel(f"S.O.: {self.os_type}")
+        self.os_label.setStyleSheet("font-size: 11px; font-style: italic; color: #a6adc8;")
 
-        # Navigation Buttons (Tabs on the left)
-        self.nav_btn1 = ctk.CTkButton(self.sidebar_frame, text="Download & Backup", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("download"))
-        self.nav_btn2 = ctk.CTkButton(self.sidebar_frame, text="Executar Scripts", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("execution"))
-        self.nav_btn3 = ctk.CTkButton(self.sidebar_frame, text="Cópia para outros servidores", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("distribution"))
-        self.nav_btn6 = ctk.CTkButton(self.sidebar_frame, text="Utilitários", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("utilities"))
-        self.nav_btn7 = ctk.CTkButton(self.sidebar_frame, text="Atualização CRMWeb", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("crmweb"))
-        self.nav_btn4 = ctk.CTkButton(self.sidebar_frame, text="Configurações", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("settings"))
-        self.nav_btn5 = ctk.CTkButton(self.sidebar_frame, text="Sobre o App", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("about"))
-        self.nav_btn_notes = ctk.CTkButton(self.sidebar_frame, text="📝 Observações", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("nbs_notes"))
+        self.sidebar_layout.addWidget(self.logo_label)
+        self.sidebar_layout.addWidget(self.os_label)
+        self.sidebar_layout.addSpacing(15)
+
+        # NBS Navigation Buttons
+        self.nav_btn1 = QPushButton("Download & Backup")
+        self.nav_btn2 = QPushButton("Executar Scripts")
+        self.nav_btn3 = QPushButton("Cópia Servidores")
+        self.nav_btn6 = QPushButton("Utilitários NBS")
+        self.nav_btn7 = QPushButton("Atualização CRMWeb")
+        self.nav_btn4 = QPushButton("Configurações")
+        self.nav_btn5 = QPushButton("Sobre o App")
+        self.nav_btn_notes = QPushButton("📝 Observações")
+
+        self.nav_btn1.clicked.connect(lambda: self.select_frame("download"))
+        self.nav_btn2.clicked.connect(lambda: self.select_frame("execution"))
+        self.nav_btn3.clicked.connect(lambda: self.select_frame("distribution"))
+        self.nav_btn6.clicked.connect(lambda: self.select_frame("utilities"))
+        self.nav_btn7.clicked.connect(lambda: self.select_frame("crmweb"))
+        self.nav_btn4.clicked.connect(lambda: self.select_frame("settings"))
+        self.nav_btn5.clicked.connect(lambda: self.select_frame("about"))
+        self.nav_btn_notes.clicked.connect(lambda: self.select_frame("nbs_notes"))
+
+        self.nbs_nav_buttons = [
+            self.nav_btn1, self.nav_btn2, self.nav_btn3,
+            self.nav_btn6, self.nav_btn7, self.nav_btn4,
+            self.nav_btn5, self.nav_btn_notes
+        ]
+
+        for btn in self.nbs_nav_buttons:
+            self.sidebar_layout.addWidget(btn)
 
         # Linx Navigation Buttons
-        self.linx_nav_btn_download = ctk.CTkButton(self.sidebar_frame, text="Download Linx", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("linx_download"))
-        self.linx_nav_btn_update = ctk.CTkButton(self.sidebar_frame, text="Atualização Linx", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("linx_update"))
-        self.linx_nav_btn_utilities = ctk.CTkButton(self.sidebar_frame, text="Utilitários Linx", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("linx_utilities"))
-        self.linx_nav_btn_settings = ctk.CTkButton(self.sidebar_frame, text="Configurações Linx", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("linx_settings"))
-        self.linx_nav_btn_about = ctk.CTkButton(self.sidebar_frame, text="Sobre o Linx", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("linx_about"))
-        self.linx_nav_btn_notes = ctk.CTkButton(self.sidebar_frame, text="📝 Observações", anchor="w", height=40, font=ctk.CTkFont(size=13, weight="bold"), command=lambda: self.select_frame("linx_notes"))
+        self.linx_nav_btn_download = QPushButton("Download Linx")
+        self.linx_nav_btn_update = QPushButton("Atualização Linx")
+        self.linx_nav_btn_utilities = QPushButton("Utilitários Linx")
+        self.linx_nav_btn_settings = QPushButton("Configurações Linx")
+        self.linx_nav_btn_about = QPushButton("Sobre o Linx")
+        self.linx_nav_btn_notes = QPushButton("📝 Observações Linx")
 
-        # General back button
-        self.nav_btn_back_to_selection = ctk.CTkButton(self.sidebar_frame, text="⬅ Alterar Sistema", anchor="center", height=35, fg_color="transparent", border_width=1, border_color=("#3a7ebf", "#1f538d"), font=ctk.CTkFont(size=12, weight="bold"), command=self.show_system_selection_screen)
+        self.linx_nav_btn_download.clicked.connect(lambda: self.select_frame("linx_download"))
+        self.linx_nav_btn_update.clicked.connect(lambda: self.select_frame("linx_update"))
+        self.linx_nav_btn_utilities.clicked.connect(lambda: self.select_frame("linx_utilities"))
+        self.linx_nav_btn_settings.clicked.connect(lambda: self.select_frame("linx_settings"))
+        self.linx_nav_btn_about.clicked.connect(lambda: self.select_frame("linx_about"))
+        self.linx_nav_btn_notes.clicked.connect(lambda: self.select_frame("linx_notes"))
 
-        # ----------------- CONTENT CONTAINER -----------------
-        self.content_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.content_frame.grid_columnconfigure(0, weight=1)
-        self.content_frame.grid_rowconfigure(0, weight=1)
+        self.linx_nav_buttons = [
+            self.linx_nav_btn_download, self.linx_nav_btn_update,
+            self.linx_nav_btn_utilities, self.linx_nav_btn_settings,
+            self.linx_nav_btn_about, self.linx_nav_btn_notes
+        ]
 
-        # Navigation Frames
-        self.frame_download = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        self.frame_execution = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        self.frame_distribution = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        self.frame_utilities = ctk.CTkScrollableFrame(self.content_frame, fg_color="transparent")
-        self.frame_crmweb = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        self.frame_settings = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        self.frame_about = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        self.frame_nbs_notes = ctk.CTkFrame(self.content_frame, fg_color="transparent")
+        for btn in self.linx_nav_buttons:
+            self.sidebar_layout.addWidget(btn)
+            btn.hide()
 
-        # Linx Navigation Frames
-        self.frame_linx_download = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        self.frame_linx_update = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        self.frame_linx_utilities = ctk.CTkScrollableFrame(self.content_frame, fg_color="transparent")
-        self.frame_linx_settings = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        self.frame_linx_about = ctk.CTkFrame(self.content_frame, fg_color="transparent")
-        self.frame_linx_notes = ctk.CTkFrame(self.content_frame, fg_color="transparent")
+        self.sidebar_layout.addStretch(1)
 
+        self.nav_btn_back_to_selection = QPushButton("⬅ Alterar Sistema")
+        self.nav_btn_back_to_selection.setStyleSheet("background-color: #313244; font-weight: bold;")
+        self.nav_btn_back_to_selection.clicked.connect(self.show_system_selection_screen)
+        self.sidebar_layout.addWidget(self.nav_btn_back_to_selection)
+
+        # ----------------- STACKED WIDGET CONTAINER -----------------
+        self.stacked_widget = QStackedWidget()
+
+        # 1. System Selection View (Index 0)
+        self.frame_system_selection = QWidget()
+        self.setup_system_selection_ui()
+
+        # 2. NBS Views
+        self.frame_download = QWidget()
+        self.frame_execution = QWidget()
+        self.frame_distribution = QWidget()
+        self.frame_utilities = QWidget()
+        self.frame_crmweb = QWidget()
+        self.frame_settings = QWidget()
+        self.frame_about = QWidget()
+        self.frame_nbs_notes = QWidget()
+
+        # 3. Linx Views
+        self.frame_linx_download = QWidget()
+        self.frame_linx_update = QWidget()
+        self.frame_linx_utilities = QWidget()
+        self.frame_linx_settings = QWidget()
+        self.frame_linx_about = QWidget()
+        self.frame_linx_notes = QWidget()
+
+        # Setup tab UIs
         self.setup_tab_download()
         self.setup_tab_execution()
         self.setup_tab_distribution()
@@ -139,7 +273,6 @@ class AtualizadorApp(ctk.CTk, NBSMixin, ApolloMixin, CommonMixin):
         self.setup_tab_about()
         self.setup_tab_nbs_notes()
 
-        # Set up Linx tabs
         self.setup_tab_linx_download()
         self.setup_tab_linx_update()
         self.setup_tab_linx_utilities()
@@ -147,335 +280,358 @@ class AtualizadorApp(ctk.CTk, NBSMixin, ApolloMixin, CommonMixin):
         self.setup_tab_linx_about()
         self.setup_tab_linx_notes()
 
+        # Add all views to stacked widget
+        self.views_map = {
+            "selection": self.frame_system_selection,
+            "download": self.frame_download,
+            "execution": self.frame_execution,
+            "distribution": self.frame_distribution,
+            "utilities": self.frame_utilities,
+            "crmweb": self.frame_crmweb,
+            "settings": self.frame_settings,
+            "about": self.frame_about,
+            "nbs_notes": self.frame_nbs_notes,
+            "linx_download": self.frame_linx_download,
+            "linx_update": self.frame_linx_update,
+            "linx_utilities": self.frame_linx_utilities,
+            "linx_settings": self.frame_linx_settings,
+            "linx_about": self.frame_linx_about,
+            "linx_notes": self.frame_linx_notes
+        }
+
+        for name, widget in self.views_map.items():
+            self.stacked_widget.addWidget(widget)
+
+        self.main_layout.addWidget(self.sidebar_frame)
+        self.main_layout.addWidget(self.stacked_widget, 1)
+
         # Initialize configurations in GUI fields
         self.load_config_into_ui()
-
-        # Trigger auto-detection of last update date
         self.auto_detect_cutoff_date()
 
-        # If brand download checkbox starts checked, fetch them
-        if self.download_interfaces_var.get():
-            self.fetch_brands()
-
-        # Set up and show selection screen
-        self.setup_system_selection_ui()
         self.show_system_selection_screen()
 
-        # Handle window close to auto-save configs
-        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+    def setup_system_selection_ui(self):
+        layout = QVBoxLayout(self.frame_system_selection)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-    # ----------------- TAB 1: DOWNLOAD & BACKUP -----------------
+        title = QLabel("Atualizador de Sistemas")
+        title.setStyleSheet("font-size: 26px; font-weight: bold; color: #89b4fa;")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-    def on_closing(self):
+        subtitle = QLabel("Selecione qual sistema você deseja gerenciar:")
+        subtitle.setStyleSheet("font-size: 14px; font-style: italic; color: #a6adc8;")
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
+        layout.addSpacing(30)
+
+        cards_row = QHBoxLayout()
+        cards_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # NBS Card
+        nbs_card = QGroupBox("Sistema NBS")
+        nbs_card.setFixedSize(340, 260)
+        nbs_card_layout = QVBoxLayout(nbs_card)
+
+        nbs_desc = QLabel(
+            "• Atualização de Módulos (FTP)\n"
+            "• Execução de Scripts SQL\n"
+            "• Cópia de Redes (Distribuição)\n"
+            "• Utilitários & Atualização CRMWeb"
+        )
+        nbs_desc.setStyleSheet("font-size: 12px; line-height: 1.5;")
+        btn_enter_nbs = QPushButton("Atualizar NBS")
+        btn_enter_nbs.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 10px;")
+        btn_enter_nbs.clicked.connect(lambda: self.enter_system("nbs"))
+
+        nbs_card_layout.addWidget(nbs_desc)
+        nbs_card_layout.addStretch(1)
+        nbs_card_layout.addWidget(btn_enter_nbs)
+
+        # Linx Card
+        linx_card = QGroupBox("Sistema Linx DMS")
+        linx_card.setFixedSize(340, 260)
+        linx_card_layout = QVBoxLayout(linx_card)
+
+        linx_desc = QLabel(
+            "• Downloads de Versões (FTP)\n"
+            "• Pacotes DMS, HPE, Toyota...\n"
+            "• Suporte a 3 Camadas & Web\n"
+            "• Atualização Modularizada"
+        )
+        linx_desc.setStyleSheet("font-size: 12px; line-height: 1.5;")
+        btn_enter_linx = QPushButton("Atualizar Linx DMS")
+        btn_enter_linx.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; padding: 10px;")
+        btn_enter_linx.clicked.connect(lambda: self.enter_system("linx"))
+
+        linx_card_layout.addWidget(linx_desc)
+        linx_card_layout.addStretch(1)
+        linx_card_layout.addWidget(btn_enter_linx)
+
+        cards_row.addWidget(nbs_card)
+        cards_row.addSpacing(20)
+        cards_row.addWidget(linx_card)
+
+        layout.addLayout(cards_row)
+
+    def enter_system(self, system_name):
+        self.sidebar_frame.show()
+        if system_name == "nbs":
+            self.setWindowTitle("Atualizador Sistemas - NBS")
+            self.logo_label.setText("NBS Atualizador")
+            for btn in self.linx_nav_buttons:
+                btn.hide()
+            for btn in self.nbs_nav_buttons:
+                btn.show()
+            self.select_frame("download")
+        elif system_name == "linx":
+            self.setWindowTitle("Atualizador Sistemas - Linx DMS")
+            self.logo_label.setText("Linx Atualizador")
+            for btn in self.nbs_nav_buttons:
+                btn.hide()
+            for btn in self.linx_nav_buttons:
+                btn.show()
+            self.select_frame("linx_download")
+
+    def show_system_selection_screen(self):
+        self.setWindowTitle("Atualizador Sistemas - Selecionar Sistema")
+        self.sidebar_frame.hide()
+        self.stacked_widget.setCurrentWidget(self.frame_system_selection)
+
+    def select_frame(self, name):
+        if name in self.views_map:
+            self.stacked_widget.setCurrentWidget(self.views_map[name])
+
+    def load_config_into_ui(self):
+        c = self.app_config
+        self.loading_config = True
+
+        set_entry_text(self.ftp_modules_entry, c.get("ftp_modules_url", ""))
+        set_entry_text(self.ftp_scripts_entry, c.get("ftp_scripts_url", ""))
+        set_entry_text(self.ftp_nfe_entry, c.get("ftp_nfe_url", ""))
+        set_entry_text(self.ftp_interfaces_entry, c.get("ftp_interfaces_url", ""))
+        set_entry_text(self.ftp_dll_entry, c.get("ftp_dll_url", ""))
+        set_entry_text(self.ftp_user_entry, c.get("ftp_user", ""))
+        set_entry_text(self.ftp_pass_entry, c.get("ftp_pass", ""))
+
+        set_entry_text(self.atualiza_path_entry, c.get("atualizacao_path_win", "") if self.os_type == "Windows" else c.get("atualizacao_path_linux", ""))
+        set_entry_text(self.nbs_path_entry, c.get("nbs_path_win", "") if self.os_type == "Windows" else c.get("nbs_path_linux", ""))
+
+        set_entry_text(self.db_user_entry, c.get("db_user", ""))
+        set_entry_text(self.db_pass_entry, c.get("db_pass", ""))
+        set_entry_text(self.db_schema_entry, c.get("db_schema", ""))
+        set_entry_text(self.db_name_entry, c.get("db_name", ""))
+
+        self.download_nbs_var.setChecked(c.get("download_nbs", True))
+        self.download_scripts_var.setChecked(c.get("download_scripts", True))
+        self.download_nfe_var.setChecked(c.get("download_nfe", False))
+        self.download_interfaces_var.setChecked(c.get("download_interfaces", False))
+        self.initial_installation_var.setChecked(c.get("initial_installation", False))
+        self.compress_backup_var.setChecked(c.get("compress_backup", False))
+        self.delete_backup_after_compress_var.setChecked(c.get("delete_backup_after_compress", False))
+        if hasattr(self, 'debug_mode_var'):
+            self.debug_mode_var.setChecked(c.get("debug_mode", False))
+
+
+
+        self.copy_local_var.setChecked(c.get("copy_local", True))
+        self.copy_servers_var.setChecked(c.get("copy_servers", True))
+
+        set_entry_text(self.crm_gold_cmd_entry, c.get("crm_gold_cmd", "C:\\Java\\Update_BSC_CRMGold\\WEUpdate.exe -suporte"))
+        set_entry_text(self.crm_parts_cmd_entry, c.get("crm_parts_cmd", "C:\\Java\\JManagerClient\\JManagerClient.exe -suporte -disablehash"))
+        set_entry_text(self.crm_payara_entry, c.get("crm_service_payara", "domain1"))
+
+
+        # Update visual recaps
+        p_up = c.get("atualizacao_path_win", "") if self.os_type == "Windows" else c.get("atualizacao_path_linux", "")
+        p_nbs = c.get("nbs_path_win", "") if self.os_type == "Windows" else c.get("nbs_path_linux", "")
+        self.recap_atualiza_lbl.setText(f"Atualização: {p_up}")
+        self.recap_nbs_lbl.setText(f"NBS Local: {p_nbs}")
+        self.recap_ftp_lbl.setText(f"FTP: {c.get('ftp_modules_url', '')}")
+
+
+        self.refresh_servers_list_ui()
+
+        # Linx configurations
+        self.linx_package_menu.setCurrentText(c.get("linx_package", "LINXDMS"))
+        set_entry_text(self.linx_version_entry, c.get("linx_version", "v5.19"))
+        set_entry_text(self.linx_path_entry, c.get("linx_download_path_win", "") if self.os_type == "Windows" else c.get("linx_download_path_linux", ""))
+
+        self.linx_dl_delphi_var.setChecked(c.get("linx_download_delphi", True))
+        self.linx_dl_server_var.setChecked(c.get("linx_download_server", False))
+        self.linx_dl_client_var.setChecked(c.get("linx_download_client", False))
+        self.linx_dl_web_var.setChecked(c.get("linx_download_web", False))
+        self.linx_dl_comissoes_var.setChecked(c.get("linx_download_comissoes", False))
+        self.linx_dl_apoio_trocafornec_var.setChecked(c.get("linx_download_apoio_trocafornec", False))
+        self.linx_dl_apoio_trocaserie_var.setChecked(c.get("linx_download_apoio_trocaserie", False))
+        self.linx_dl_apoio_verificadiaria_var.setChecked(c.get("linx_download_apoio_verificadiaria", False))
+        self.linx_dl_integrador_var.setChecked(c.get("linx_download_integrador", False))
+        self.linx_backup_apollo_var.setChecked(c.get("linx_backup_apollo", False))
+
+        set_entry_text(self.linx_url_delphi_entry, c.get("linx_url_delphi_template", config.DEFAULT_CONFIG["linx_url_delphi_template"]))
+        set_entry_text(self.linx_url_server_entry, c.get("linx_url_server_template", config.DEFAULT_CONFIG["linx_url_server_template"]))
+        set_entry_text(self.linx_url_client_entry, c.get("linx_url_client_template", config.DEFAULT_CONFIG["linx_url_client_template"]))
+        set_entry_text(self.linx_url_web_entry, c.get("linx_url_web_template", config.DEFAULT_CONFIG["linx_url_web_template"]))
+        set_entry_text(self.linx_url_comissoes_delphi_entry, c.get("linx_url_comissoes_delphi_template", config.DEFAULT_CONFIG["linx_url_comissoes_delphi_template"]))
+        set_entry_text(self.linx_url_comissoes_client_entry, c.get("linx_url_comissoes_client_template", config.DEFAULT_CONFIG["linx_url_comissoes_client_template"]))
+        set_entry_text(self.linx_url_apoio_entry, c.get("linx_url_apoio_template", config.DEFAULT_CONFIG["linx_url_apoio_template"]))
+        set_entry_text(self.linx_url_integrador_entry, c.get("linx_url_integrador_template", config.DEFAULT_CONFIG["linx_url_integrador_template"]))
+
+        set_entry_text(self.linx_service_dfe_entry, c.get("linx_service_dfe", "DFeServico"))
+        set_entry_text(self.linx_service_datasnap_entry, c.get("linx_service_datasnap", "RedirecionaDatasnap"))
+        set_entry_text(self.linx_service_3camadas_entry, c.get("linx_service_3camadas", "VerificaServer3Camadas"))
+        set_entry_text(self.linx_service_integrador_entry, c.get("linx_service_integrador", "dmLDIServer"))
+        set_entry_text(self.linx_kill_pattern_entry, c.get("linx_kill_process_pattern", "wsContabil"))
+
+        p_norm = c.get("linx_path_normal_win", "C:\\Apollo\\Atualiza") if self.os_type == "Windows" else c.get("linx_path_normal_linux", "./Apollo_Atualiza")
+        p_serv = c.get("linx_path_server_win", "C:\\3Camadas") if self.os_type == "Windows" else c.get("linx_path_server_linux", "./3Camadas")
+        p_clit = c.get("linx_path_client_win", "C:\\3Camadas\\Atualiza") if self.os_type == "Windows" else c.get("linx_path_client_linux", "./3Camadas_Atualiza")
+
+        set_entry_text(self.linx_path_normal_entry, p_norm)
+        set_entry_text(self.linx_path_server_entry, p_serv)
+        set_entry_text(self.linx_path_client_entry, p_clit)
+
+        self.dest_normal_lbl.setText(f"Apollo/Atualiza: {p_norm}")
+        self.dest_server_lbl.setText(f"3Camadas Server: {p_serv}")
+        self.dest_client_lbl.setText(f"3Camadas Client: {p_clit}")
+
+        if hasattr(self, "nbs_notes_box"):
+            self.nbs_notes_box.setPlainText(c.get("nbs_notes", ""))
+
+        self.loading_config = False
+
+
+    def save_ui_to_config(self):
+        if getattr(self, "loading_config", False):
+            return
+        c = self.app_config
+
+        c["ftp_modules_url"] = get_entry_text(self.ftp_modules_entry)
+        c["ftp_scripts_url"] = get_entry_text(self.ftp_scripts_entry)
+        c["ftp_nfe_url"] = get_entry_text(self.ftp_nfe_entry)
+        c["ftp_interfaces_url"] = get_entry_text(self.ftp_interfaces_entry)
+        c["ftp_dll_url"] = get_entry_text(self.ftp_dll_entry)
+        c["ftp_user"] = get_entry_text(self.ftp_user_entry)
+        c["ftp_pass"] = get_entry_text(self.ftp_pass_entry)
+
+        if self.os_type == "Windows":
+            c["atualizacao_path_win"] = get_entry_text(self.atualiza_path_entry)
+            c["nbs_path_win"] = get_entry_text(self.nbs_path_entry)
+        else:
+            c["atualizacao_path_linux"] = get_entry_text(self.atualiza_path_entry)
+            c["nbs_path_linux"] = get_entry_text(self.nbs_path_entry)
+
+        c["db_user"] = get_entry_text(self.db_user_entry)
+        c["db_pass"] = get_entry_text(self.db_pass_entry)
+        c["db_schema"] = get_entry_text(self.db_schema_entry)
+        c["db_name"] = get_entry_text(self.db_name_entry)
+
+        c["download_nbs"] = self.download_nbs_var.isChecked()
+        c["download_scripts"] = self.download_scripts_var.isChecked()
+        c["download_nfe"] = self.download_nfe_var.isChecked()
+        c["download_interfaces"] = self.download_interfaces_var.isChecked()
+        c["initial_installation"] = self.initial_installation_var.isChecked()
+        c["compress_backup"] = self.compress_backup_var.isChecked()
+        c["delete_backup_after_compress"] = self.delete_backup_after_compress_var.isChecked()
+        if hasattr(self, 'debug_mode_var'):
+            c["debug_mode"] = self.debug_mode_var.isChecked()
+
+        if hasattr(self, 'brand_checkboxes') and self.brand_checkboxes:
+            c["selected_interfaces"] = [brand for brand, chk in self.brand_checkboxes.items() if chk.isChecked()]
+
+        if hasattr(self, "nbs_notes_box"):
+            c["nbs_notes"] = self.nbs_notes_box.toPlainText()
+
+        c["copy_local"] = self.copy_local_var.isChecked()
+
+
+        c["copy_servers"] = self.copy_servers_var.isChecked()
+
+        c["crm_gold_cmd"] = get_entry_text(self.crm_gold_cmd_entry)
+        c["crm_parts_cmd"] = get_entry_text(self.crm_parts_cmd_entry)
+        c["crm_service_payara"] = get_entry_text(self.crm_payara_entry)
+
+
+
+        c["linx_package"] = self.linx_package_menu.currentText()
+        c["linx_version"] = get_entry_text(self.linx_version_entry)
+        if self.os_type == "Windows":
+            c["linx_download_path_win"] = get_entry_text(self.linx_path_entry)
+        else:
+            c["linx_download_path_linux"] = get_entry_text(self.linx_path_entry)
+
+        c["linx_download_delphi"] = self.linx_dl_delphi_var.isChecked()
+        c["linx_download_server"] = self.linx_dl_server_var.isChecked()
+        c["linx_download_client"] = self.linx_dl_client_var.isChecked()
+        c["linx_download_web"] = self.linx_dl_web_var.isChecked()
+        c["linx_download_comissoes"] = self.linx_dl_comissoes_var.isChecked()
+        c["linx_download_apoio_trocafornec"] = self.linx_dl_apoio_trocafornec_var.isChecked()
+        c["linx_download_apoio_trocaserie"] = self.linx_dl_apoio_trocaserie_var.isChecked()
+        c["linx_download_apoio_verificadiaria"] = self.linx_dl_apoio_verificadiaria_var.isChecked()
+        c["linx_download_integrador"] = self.linx_dl_integrador_var.isChecked()
+        c["linx_backup_apollo"] = self.linx_backup_apollo_var.isChecked()
+
+        c["linx_url_delphi_template"] = get_entry_text(self.linx_url_delphi_entry)
+        c["linx_url_server_template"] = get_entry_text(self.linx_url_server_entry)
+        c["linx_url_client_template"] = get_entry_text(self.linx_url_client_entry)
+        c["linx_url_web_template"] = get_entry_text(self.linx_url_web_entry)
+        c["linx_url_comissoes_delphi_template"] = get_entry_text(self.linx_url_comissoes_delphi_entry)
+        c["linx_url_comissoes_client_template"] = get_entry_text(self.linx_url_comissoes_client_entry)
+        c["linx_url_apoio_template"] = get_entry_text(self.linx_url_apoio_entry)
+        c["linx_url_integrador_template"] = get_entry_text(self.linx_url_integrador_entry)
+
+        c["linx_service_dfe"] = get_entry_text(self.linx_service_dfe_entry)
+        c["linx_service_datasnap"] = get_entry_text(self.linx_service_datasnap_entry)
+        c["linx_service_3camadas"] = get_entry_text(self.linx_service_3camadas_entry)
+        c["linx_service_integrador"] = get_entry_text(self.linx_service_integrador_entry)
+        c["linx_kill_process_pattern"] = get_entry_text(self.linx_kill_pattern_entry)
+
+        if self.os_type == "Windows":
+            c["linx_path_normal_win"] = get_entry_text(self.linx_path_normal_entry)
+            c["linx_path_server_win"] = get_entry_text(self.linx_path_server_entry)
+            c["linx_path_client_win"] = get_entry_text(self.linx_path_client_entry)
+        else:
+            c["linx_path_normal_linux"] = get_entry_text(self.linx_path_normal_entry)
+            c["linx_path_server_linux"] = get_entry_text(self.linx_path_server_entry)
+            c["linx_path_client_linux"] = get_entry_text(self.linx_path_client_entry)
+
+        config.save_config(c)
+        if hasattr(self, "update_linx_paths_display"):
+            self.update_linx_paths_display()
+
+
+    def closeEvent(self, event):
         try:
             self.save_ui_to_config()
         except Exception:
             pass
-        try:
-            self.save_nbs_notes()
-        except Exception:
-            pass
-        try:
-            self.save_linx_notes()
-        except Exception:
-            pass
-        self.destroy()
+        event.accept()
 
-
-    def auto_detect_cutoff_date(self):
-        """Scans the active directory and pre-populates the last update date."""
-        c = self.app_config
-        path = c.get("atualizacao_path_win", "C:\\Atualizacao") if self.os_type == "Windows" else c.get("atualizacao_path_linux", "./Atualizacao")
-        
-        self.cutoff_date_entry.delete(0, "end")
-        
-        last_dt = utils.get_last_update_date(path)
-        if last_dt:
-            date_str = last_dt.strftime("%d/%m/%Y")
-            self.cutoff_date_entry.insert(0, date_str)
-            self.log_to_dl_console(f"Última data de atualização detectada a partir de {path}: {date_str}")
-        else:
-            # Fallback to MinValue or blank, meaning download everything
-            self.cutoff_date_entry.insert(0, "")
-            self.log_to_dl_console(f"Nenhuma pasta anterior ddMMyyyy encontrada em {path}. Todos os arquivos serão baixados.")
-
-    # ----------------- GENERAL WIDGET UTILS -----------------
-
-    def set_navigation_state(self, state):
-        """Habilita ou desabilita os botões da barra lateral de navegação."""
-        self.nav_btn1.configure(state=state)
-        self.nav_btn2.configure(state=state)
-        self.nav_btn3.configure(state=state)
-        self.nav_btn4.configure(state=state)
-        self.nav_btn5.configure(state=state)
-        self.nav_btn6.configure(state=state)
-        self.nav_btn7.configure(state=state)
-        self.nav_btn_notes.configure(state=state)
-        self.linx_nav_btn_download.configure(state=state)
-        self.linx_nav_btn_update.configure(state=state)
-        self.linx_nav_btn_utilities.configure(state=state)
-        self.linx_nav_btn_settings.configure(state=state)
-        self.linx_nav_btn_about.configure(state=state)
-        self.linx_nav_btn_notes.configure(state=state)
-
-
-    def show_running_buttons(self):
-        """Exibe os botões de pausar e cancelar na interface, ocultando o botão de iniciar."""
-        self.start_dl_btn.grid_forget()
-        self.pause_dl_btn.grid(row=1, column=1, padx=10, pady=(5, 2), sticky="ew")
-        self.cancel_dl_btn.grid(row=2, column=1, padx=10, pady=(2, 5), sticky="ew")
-        self.pause_dl_btn.configure(text="Pausar")
-
-
-    def show_idle_buttons(self):
-        """Restaura o botão de iniciar na interface, ocultando os botões de pausar e cancelar."""
-        self.pause_dl_btn.grid_forget()
-        self.cancel_dl_btn.grid_forget()
-        self.start_dl_btn.grid(row=1, column=1, rowspan=2, padx=10, pady=5, sticky="nsew")
-
-
-    def select_frame(self, name):
-        # Reset colors of navigation buttons (active vs inactive)
-        self.nav_btn1.configure(fg_color=("#3a7ebf", "#1f538d") if name == "download" else "transparent")
-        self.nav_btn2.configure(fg_color=("#3a7ebf", "#1f538d") if name == "execution" else "transparent")
-        self.nav_btn3.configure(fg_color=("#3a7ebf", "#1f538d") if name == "distribution" else "transparent")
-        self.nav_btn6.configure(fg_color=("#3a7ebf", "#1f538d") if name == "utilities" else "transparent")
-        self.nav_btn7.configure(fg_color=("#3a7ebf", "#1f538d") if name == "crmweb" else "transparent")
-        self.nav_btn4.configure(fg_color=("#3a7ebf", "#1f538d") if name == "settings" else "transparent")
-        self.nav_btn5.configure(fg_color=("#3a7ebf", "#1f538d") if name == "about" else "transparent")
-        self.nav_btn_notes.configure(fg_color=("#3a7ebf", "#1f538d") if name == "nbs_notes" else "transparent")
-
-        self.linx_nav_btn_download.configure(fg_color=("#3a7ebf", "#1f538d") if name == "linx_download" else "transparent")
-        self.linx_nav_btn_update.configure(fg_color=("#3a7ebf", "#1f538d") if name == "linx_update" else "transparent")
-        self.linx_nav_btn_utilities.configure(fg_color=("#3a7ebf", "#1f538d") if name == "linx_utilities" else "transparent")
-        self.linx_nav_btn_settings.configure(fg_color=("#3a7ebf", "#1f538d") if name == "linx_settings" else "transparent")
-        self.linx_nav_btn_about.configure(fg_color=("#3a7ebf", "#1f538d") if name == "linx_about" else "transparent")
-        self.linx_nav_btn_notes.configure(fg_color=("#3a7ebf", "#1f538d") if name == "linx_notes" else "transparent")
-
-        # Hide/show appropriate frame
-        if name == "download":
-            self.frame_download.grid(row=0, column=0, sticky="nsew")
-        else:
-            self.frame_download.grid_remove()
-
-        if name == "execution":
-            self.frame_execution.grid(row=0, column=0, sticky="nsew")
-        else:
-            self.frame_execution.grid_remove()
-
-        if name == "distribution":
-            self.frame_distribution.grid(row=0, column=0, sticky="nsew")
-        else:
-            self.frame_distribution.grid_remove()
-
-        if name == "utilities":
-            self.frame_utilities.grid(row=0, column=0, sticky="nsew")
-        else:
-            self.frame_utilities.grid_remove()
-
-        if name == "crmweb":
-            self.frame_crmweb.grid(row=0, column=0, sticky="nsew")
-            self.after(100, self.refresh_crm_service)
-        else:
-            self.frame_crmweb.grid_remove()
-
-        if name == "settings":
-            self.frame_settings.grid(row=0, column=0, sticky="nsew")
-        else:
-            self.frame_settings.grid_remove()
-
-        if name == "about":
-            self.frame_about.grid(row=0, column=0, sticky="nsew")
-        else:
-            self.frame_about.grid_remove()
-
-        if name == "nbs_notes":
-            self.frame_nbs_notes.grid(row=0, column=0, sticky="nsew")
-        else:
-            self.frame_nbs_notes.grid_remove()
-
-        # Linx frames
-        if name == "linx_download":
-            self.frame_linx_download.grid(row=0, column=0, sticky="nsew")
-        else:
-            self.frame_linx_download.grid_remove()
-
-        if name == "linx_update":
-            self.frame_linx_update.grid(row=0, column=0, sticky="nsew")
-            # Auto-refresh services when selecting update frame
-            self.after(100, self.refresh_linx_services)
-        else:
-            self.frame_linx_update.grid_remove()
-
-        if name == "linx_utilities":
-            self.frame_linx_utilities.grid(row=0, column=0, sticky="nsew")
-        else:
-            self.frame_linx_utilities.grid_remove()
-
-        if name == "linx_settings":
-            self.frame_linx_settings.grid(row=0, column=0, sticky="nsew")
-        else:
-            self.frame_linx_settings.grid_remove()
-
-        if name == "linx_about":
-            self.frame_linx_about.grid(row=0, column=0, sticky="nsew")
-        else:
-            self.frame_linx_about.grid_remove()
-
-        if name == "linx_notes":
-            self.frame_linx_notes.grid(row=0, column=0, sticky="nsew")
-        else:
-            self.frame_linx_notes.grid_remove()
-
-
-    def show_nbs_sidebar(self):
-        # Hide all Linx buttons
-        self.linx_nav_btn_download.grid_remove()
-        self.linx_nav_btn_update.grid_remove()
-        self.linx_nav_btn_utilities.grid_remove()
-        self.linx_nav_btn_settings.grid_remove()
-        self.linx_nav_btn_about.grid_remove()
-        self.linx_nav_btn_notes.grid_remove()
-        
-        # Show all NBS buttons
-        self.nav_btn1.grid(row=2, column=0, padx=15, pady=5, sticky="ew")
-        self.nav_btn2.grid(row=3, column=0, padx=15, pady=5, sticky="ew")
-        self.nav_btn3.grid(row=4, column=0, padx=15, pady=5, sticky="ew")
-        self.nav_btn6.grid(row=5, column=0, padx=15, pady=5, sticky="ew")
-        self.nav_btn7.grid(row=6, column=0, padx=15, pady=5, sticky="ew")
-        self.nav_btn4.grid(row=7, column=0, padx=15, pady=5, sticky="ew")
-        self.nav_btn5.grid(row=8, column=0, padx=15, pady=5, sticky="ew")
-        self.nav_btn_notes.grid(row=9, column=0, padx=15, pady=5, sticky="ew")
-        
-        # Show back button
-        self.nav_btn_back_to_selection.grid(row=11, column=0, padx=15, pady=15, sticky="ew")
-
-
-    def show_linx_sidebar(self):
-        # Hide all NBS buttons
-        self.nav_btn1.grid_remove()
-        self.nav_btn2.grid_remove()
-        self.nav_btn3.grid_remove()
-        self.nav_btn6.grid_remove()
-        self.nav_btn7.grid_remove()
-        self.nav_btn4.grid_remove()
-        self.nav_btn5.grid_remove()
-        self.nav_btn_notes.grid_remove()
-        
-        # Show Linx buttons
-        self.linx_nav_btn_download.grid(row=2, column=0, padx=15, pady=5, sticky="ew")
-        self.linx_nav_btn_update.grid(row=3, column=0, padx=15, pady=5, sticky="ew")
-        self.linx_nav_btn_utilities.grid(row=4, column=0, padx=15, pady=5, sticky="ew")
-        self.linx_nav_btn_settings.grid(row=5, column=0, padx=15, pady=5, sticky="ew")
-        self.linx_nav_btn_about.grid(row=6, column=0, padx=15, pady=5, sticky="ew")
-        self.linx_nav_btn_notes.grid(row=7, column=0, padx=15, pady=5, sticky="ew")
-        
-        # Show back button
-        self.nav_btn_back_to_selection.grid(row=11, column=0, padx=15, pady=15, sticky="ew")
-
-
-    def setup_system_selection_ui(self):
-        # Main container inside frame_system_selection
-        self.selection_container = ctk.CTkFrame(self.frame_system_selection, fg_color="transparent")
-        self.selection_container.place(relx=0.5, rely=0.5, anchor="center")
-        
-        # Title Label
-        title_lbl = ctk.CTkLabel(self.selection_container, text="Atualizador de Sistemas", font=ctk.CTkFont(size=26, weight="bold"))
-        title_lbl.grid(row=0, column=0, columnspan=2, pady=(0, 10))
-        
-        subtitle_lbl = ctk.CTkLabel(self.selection_container, text="Selecione qual sistema você deseja gerenciar:", font=ctk.CTkFont(size=14, slant="italic"))
-        subtitle_lbl.grid(row=1, column=0, columnspan=2, pady=(0, 40))
-        
-        # NBS Card
-        self.nbs_card = ctk.CTkFrame(self.selection_container, width=350, height=280, corner_radius=15, border_width=2, border_color="#3a7ebf")
-        self.nbs_card.grid(row=2, column=0, padx=20, pady=10)
-        self.nbs_card.grid_propagate(False)
-        
-        # Linx Card
-        self.linx_card = ctk.CTkFrame(self.selection_container, width=350, height=280, corner_radius=15, border_width=2, border_color="#2c3e50")
-        self.linx_card.grid(row=2, column=1, padx=20, pady=10)
-        self.linx_card.grid_propagate(False)
-        
-        # NBS Card Contents
-        nbs_title = ctk.CTkLabel(self.nbs_card, text="Sistema NBS", font=ctk.CTkFont(size=18, weight="bold"))
-        nbs_title.pack(pady=(20, 10))
-        
-        nbs_desc = ctk.CTkLabel(self.nbs_card, text="• Atualização de Módulos (FTP)\n• Execução de Scripts SQL\n• Cópia de Redes (Distribuição)\n• Utilitários & Atualização CRMWeb", justify="left", font=ctk.CTkFont(size=11))
-        nbs_desc.pack(anchor="w", padx=45, pady=10)
-        
-        nbs_btn = ctk.CTkButton(self.nbs_card, text="Atualizar NBS", font=ctk.CTkFont(weight="bold"), height=35, command=lambda: self.enter_system("nbs"))
-        nbs_btn.pack(side="bottom", pady=20)
-        
-        # Linx Card Contents
-        linx_title = ctk.CTkLabel(self.linx_card, text="Sistema Linx DMS", font=ctk.CTkFont(size=18, weight="bold"))
-        linx_title.pack(pady=(20, 10))
-        
-        linx_desc = ctk.CTkLabel(self.linx_card, text="• Downloads de Versões (FTP)\n• Pacotes DMS, HPE, Toyota...\n• Suporte a 3 Camadas & Web\n• Atualização Modularizada", justify="left", font=ctk.CTkFont(size=11))
-        linx_desc.pack(anchor="w", padx=45, pady=10)
-        
-        linx_btn = ctk.CTkButton(self.linx_card, text="Atualizar Linx DMS", font=ctk.CTkFont(weight="bold"), height=35, fg_color="#2c3e50", hover_color="#34495e", command=lambda: self.enter_system("linx"))
-        linx_btn.pack(side="bottom", pady=20)
-
-
-    def enter_system(self, system_name):
-        self.frame_system_selection.grid_remove()
-        
-        # Re-grid layout
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=5)
-        self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
-        self.content_frame.grid(row=0, column=1, padx=20, pady=10, sticky="nsew")
-        
-        if system_name == "nbs":
-            self.title("Atualizador Sistemas - NBS")
-            self.logo_label.configure(text="NBS Atualizador")
-            self.show_nbs_sidebar()
-            self.select_frame("download")
-        elif system_name == "linx":
-            self.title("Atualizador Sistemas - Linx DMS")
-            self.logo_label.configure(text="Linx Atualizador")
-            self.show_linx_sidebar()
-            self.select_frame("linx_download")
-
-
-    def show_system_selection_screen(self):
-        # Remove sidebar and content from grid
-        self.sidebar_frame.grid_remove()
-        self.content_frame.grid_remove()
-        
-        # Reset window grid weights to keep selection centered
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=0)
-        
-        # Show selection screen
-        self.title("Atualizador Sistemas - Selecionar Sistema")
-        self.frame_system_selection.grid(row=0, column=0, columnspan=2, sticky="nsew")
-
-
-    def log_to_dl_console(self, message):
-        self.console_log.insert("end", f"[{datetime.now().strftime('%H:%M:%S')}] {message}\n")
-        self.console_log.see("end")
-
-
-    def log_to_exec_console(self, message):
-        self.exec_log_box.insert("end", f"[{datetime.now().strftime('%H:%M:%S')}] {message}\n")
-        self.exec_log_box.see("end")
-
-
-    def log_to_dist_console(self, message):
-        self.dist_console_log.configure(state="normal")
-        self.dist_console_log.insert("end", f"[{datetime.now().strftime('%H:%M:%S')}] {message}\n")
-        self.dist_console_log.see("end")
-        self.dist_console_log.configure(state="disabled")
-
-    # ----------------- BRANDS FETCHING AND FILTERING -----------------
+    def on_license_revoked(self):
+        QMessageBox.critical(
+            self,
+            "Licença Revogada",
+            "A licença deste sistema foi revogada ou expirou no servidor REST.\nO aplicativo será encerrado."
+        )
+        self.close()
+        sys.exit(0)
 
 
 if __name__ == "__main__":
-    # Ensure Tkinter runs correctly (handles X server issues gracefully on headless servers if needed)
+    app = QApplication(sys.argv)
+    app.setStyleSheet(DARK_QSS)
+
+    # 🔒 GATEKEEPER: Se a licença não for aprovada online, encerra o programa na hora
+    if not enforce_license_gatekeeper("AtualizadorSistemas"):
+        sys.exit(0)
+
+    # 🟢 ACESSO LIBERADO: Carrega a aplicação PySide6
     try:
-        app = AtualizadorApp()
-        app.mainloop()
+        main_win = AtualizadorApp()
+        main_win.show()
+        sys.exit(app.exec())
     except Exception as e:
         print(f"Erro ao inicializar interface gráfica: {str(e)}")
         sys.exit(1)

@@ -48,7 +48,105 @@ def get_last_update_date(atualiza_path):
         # Today's folder does not exist, so the latest folder is the last update
         return subdirs[0][1]
 
+def parse_date(date_str):
+    """
+    Parses a string in format DD/MM/YYYY or YYYYMMDD into a datetime object.
+    Returns None if empty or invalid.
+    """
+    if not date_str or not str(date_str).strip():
+        return None
+    s = str(date_str).strip()
+    for fmt in ("%d/%m/%Y", "%d%m%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            pass
+    return None
+
+def find_latest_nbs_script(atualiza_path):
+    r"""
+    Scans C:\Atualizacao for the newest dated folder (ddMMyyyy) and returns the full path
+    to the newest NBSScripts_*.exe file inside it.
+    """
+    if not os.path.exists(atualiza_path):
+        return ""
+
+    pattern = re.compile(r'^\d{8}$')
+    subdirs = []
+    try:
+        for name in os.listdir(atualiza_path):
+            full_path = os.path.join(atualiza_path, name)
+            if os.path.isdir(full_path) and pattern.match(name):
+                try:
+                    dt = datetime.strptime(name, "%d%m%Y")
+                    subdirs.append((full_path, dt))
+                except ValueError:
+                    continue
+    except Exception:
+        return ""
+
+    if not subdirs:
+        return ""
+
+    subdirs.sort(key=lambda x: x[1], reverse=True)
+
+    version_pattern = re.compile(r'^NBSScripts_.*\.exe$', re.IGNORECASE)
+    for folder_path, _ in subdirs:
+        candidates = []
+        for root, _, files in os.walk(folder_path):
+            for f in files:
+                if version_pattern.match(f):
+                    candidates.append(os.path.join(root, f))
+        if candidates:
+            candidates.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+            return os.path.normpath(candidates[0])
+
+    return ""
+
+def find_latest_nfe_file(atualiza_path):
+    r"""
+    Scans C:\Atualizacao for the newest dated folder (ddMMyyyy) and returns the full path
+    to NFE executables (NFE.exe, InstalaNFE.exe, etc.) inside it.
+    """
+
+    if not os.path.exists(atualiza_path):
+        return ""
+
+    pattern = re.compile(r'^\d{8}$')
+    subdirs = []
+    try:
+        for name in os.listdir(atualiza_path):
+            full_path = os.path.join(atualiza_path, name)
+            if os.path.isdir(full_path) and pattern.match(name):
+                try:
+                    dt = datetime.strptime(name, "%d%m%Y")
+                    subdirs.append((full_path, dt))
+                except ValueError:
+                    continue
+    except Exception:
+        return ""
+
+    if not subdirs:
+        return ""
+
+    subdirs.sort(key=lambda x: x[1], reverse=True)
+
+    nfe_pattern = re.compile(r'^(InstaladorNFE_.*|.*nfe.*)\.exe$', re.IGNORECASE)
+    for folder_path, _ in subdirs:
+        candidates = []
+        for root, _, files in os.walk(folder_path):
+            for f in files:
+                if nfe_pattern.match(f):
+                    candidates.append(os.path.join(root, f))
+        if candidates:
+            candidates.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+            return os.path.normpath(candidates[0])
+
+    return ""
+
 def backup_local_executables(nbs_path, backup_path, log_callback=None):
+
+
     """
     Copies all *.exe files from nbs_path directly into backup_path (non-recursive).
     """
@@ -287,10 +385,11 @@ def distribute_to_destination(source_dir, dst_path, log_callback=None):
                 log_callback(f"Erro ao distribuir para {dst_path}: {str(e)}")
             return False
 
-def compress_folder(folder_path, archive_type='zip', log_callback=None):
+def compress_folder(folder_path, archive_type='zip', log_callback=None, progress_callback=None):
     """
     Compresses folder_path recursively using zipfile with ZIP_DEFLATED and level 9.
     Creates the archive in the parent directory of folder_path.
+    Reports real-time percentage, compression speed, and estimated time remaining (ETA).
     Returns the absolute path of the created archive file, or None on failure.
     """
     import zipfile
@@ -308,12 +407,63 @@ def compress_folder(folder_path, archive_type='zip', log_callback=None):
         if log_callback:
             log_callback(f"Iniciando compactação máxima (.zip) da pasta: {folder_name}...")
 
+        # 1. Scan files and calculate total uncompressed size
+        all_files = []
+        total_bytes = 0
+        for root, dirs, files in os.walk(folder_path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                try:
+                    sz = os.path.getsize(file_path)
+                except Exception:
+                    sz = 0
+                all_files.append((file_path, sz))
+                total_bytes += sz
+
+        processed_bytes = 0
+        start_time = time.time()
+        last_log_time = 0
+
         with zipfile.ZipFile(archive_path, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zipf:
-            for root, dirs, files in os.walk(folder_path):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    arcname = os.path.join(folder_name, os.path.relpath(file_path, folder_path))
-                    zipf.write(file_path, arcname)
+            for file_path, sz in all_files:
+                arcname = os.path.join(folder_name, os.path.relpath(file_path, folder_path))
+                zipf.write(file_path, arcname)
+                processed_bytes += sz
+
+                now = time.time()
+                elapsed = max(now - start_time, 0.001)
+                speed = processed_bytes / elapsed if elapsed > 0 else 0
+                remaining_bytes = max(0, total_bytes - processed_bytes)
+                eta_seconds = (remaining_bytes / speed) if speed > 0 else 0
+
+                pct = (processed_bytes / total_bytes * 100) if total_bytes > 0 else 100.0
+
+                # Format ETA
+                if eta_seconds < 60:
+                    eta_str = f"{int(eta_seconds)}s"
+                elif eta_seconds < 3600:
+                    m = int(eta_seconds // 60)
+                    s = int(eta_seconds % 60)
+                    eta_str = f"{m}m {s}s"
+                else:
+                    h = int(eta_seconds // 3600)
+                    m = int((eta_seconds % 3600) // 60)
+                    eta_str = f"{h}h {m}m"
+
+                # Format speed
+                if speed >= 1024 * 1024:
+                    speed_str = f"{speed / (1024 * 1024):.2f} MB/s"
+                elif speed >= 1024:
+                    speed_str = f"{speed / 1024:.1f} KB/s"
+                else:
+                    speed_str = f"{speed:.0f} B/s"
+
+                if progress_callback:
+                    progress_callback(processed_bytes, total_bytes, pct, eta_str, speed_str)
+
+                if log_callback and (now - last_log_time >= 2.0 or processed_bytes == total_bytes):
+                    last_log_time = now
+                    log_callback(f"Compactando {folder_name}... {pct:.1f}% ({speed_str} - Tempo restante: {eta_str})")
 
         if log_callback:
             log_callback(f"Pasta compactada com sucesso: {os.path.basename(archive_path)}")
@@ -648,3 +798,200 @@ def authenticate_network_share(target_path, username=None, password=None, log_ca
             return True
 
     return True
+
+
+def cleanup_old_update_folders(atualiza_path, log_callback=None, max_folders=2):
+    r"""
+    Varre o diretório de atualização (ex: C:\Atualizacao) em busca de pastas no formato ddMMyyyy.
+    Ordena as pastas por data decrescente e mantém no máximo max_folders (padrão 2: a atual e 1 anterior).
+    Exclui fisicamente as pastas mais antigas.
+    """
+
+    if not os.path.exists(atualiza_path):
+        return
+
+    pattern = re.compile(r'^\d{8}$')
+    subdirs = []
+
+    try:
+        for name in os.listdir(atualiza_path):
+            full_path = os.path.join(atualiza_path, name)
+            if os.path.isdir(full_path) and pattern.match(name):
+                try:
+                    dt = datetime.strptime(name, "%d%m%Y")
+                    subdirs.append((full_path, name, dt))
+                except ValueError:
+                    continue
+    except Exception as e:
+        if log_callback:
+            log_callback(f"Aviso ao listar pastas em {atualiza_path}: {e}")
+        return
+
+    if len(subdirs) <= max_folders:
+        return
+
+    # Ordena decrescente pela data (mais recente primeiro)
+    subdirs.sort(key=lambda x: x[2], reverse=True)
+
+    folders_to_delete = subdirs[max_folders:]
+
+    for full_path, name, dt in folders_to_delete:
+        if log_callback:
+            log_callback(f"Limpando pasta de atualização antiga ({name}) para manter apenas 1 pasta anterior...")
+        try:
+            shutil.rmtree(full_path)
+            if log_callback:
+                log_callback(f"Pasta de atualização antiga '{name}' excluída com sucesso.")
+        except Exception as err:
+            if log_callback:
+                log_callback(f"Aviso ao remover pasta de atualização antiga '{name}': {err}")
+
+
+def cleanup_old_apollo_backup_zips(backup_parent_dir, current_zip_path=None, last_saved_zip=None, log_callback=None):
+    """
+    Verifica e exclui backups zipados anteriores do Apollo em backup_parent_dir,
+    mantendo apenas o arquivo zip de backup atual (current_zip_path).
+    """
+    # 1. Se houver um caminho zip salvo previamente no config, tenta excluir
+    if last_saved_zip and os.path.exists(last_saved_zip):
+        if not current_zip_path or os.path.abspath(last_saved_zip) != os.path.abspath(current_zip_path):
+            try:
+                os.remove(last_saved_zip)
+                if log_callback:
+                    log_callback(f"Backup zip anterior do Apollo excluído: {os.path.basename(last_saved_zip)}")
+            except Exception as e:
+                if log_callback:
+                    log_callback(f"Aviso ao remover backup zip anterior ({last_saved_zip}): {e}")
+
+    # 2. Varre a pasta pai do backup procurando arquivos no padrão backup_*.zip
+    if backup_parent_dir and os.path.exists(backup_parent_dir):
+        pattern = re.compile(r'^backup_.*\.zip$', re.IGNORECASE)
+        try:
+            for name in os.listdir(backup_parent_dir):
+                full_path = os.path.join(backup_parent_dir, name)
+                if os.path.isfile(full_path) and pattern.match(name):
+                    if current_zip_path and os.path.abspath(full_path) == os.path.abspath(current_zip_path):
+                        continue
+                    try:
+                        os.remove(full_path)
+                        if log_callback:
+                            log_callback(f"Backup zip antigo do Apollo excluído: {name}")
+                    except Exception as e:
+                        if log_callback:
+                            log_callback(f"Aviso ao remover backup zip antigo ({name}): {e}")
+        except Exception as e:
+            if log_callback:
+                log_callback(f"Aviso ao listar backups em {backup_parent_dir}: {e}")
+
+
+def manage_windows_service(service_name, action, log_callback=None):
+    """
+    Inicia ou para um serviço do Windows via sc.exe.
+    action: 'start' ou 'stop'
+    """
+    if platform.system() != "Windows":
+        if log_callback:
+            log_callback(f"[SIMULADO] Serviço '{service_name}' {action} (Apenas Windows).")
+        return True
+
+    import subprocess
+    action_label = "Parando" if action == "stop" else "Iniciando"
+    if log_callback:
+        log_callback(f"{action_label} serviço '{service_name}'...")
+
+    try:
+        res = subprocess.run(
+            ["sc", action, service_name],
+            capture_output=True,
+            text=True,
+            creationflags=0x08000000
+        )
+        time.sleep(1.5)
+        if log_callback:
+            log_callback(f"Comando 'sc {action} {service_name}' executado com sucesso.")
+        return True
+    except Exception as e:
+        if log_callback:
+            log_callback(f"Erro ao executar 'sc {action} {service_name}': {e}")
+        return False
+
+
+def make_apollo_backup(dest_normal, log_callback=None):
+    """
+    Zipa os arquivos/executáveis existentes em dest_normal e salva em backup_DDMMYYYY_HHMMSS.zip com máxima compressão.
+    """
+    if not os.path.exists(dest_normal):
+        if log_callback:
+            log_callback(f"Pasta '{dest_normal}' não existe. Backup ignorado.")
+        return None
+
+    date_str = datetime.now().strftime("%d%m%Y_%H%M%S")
+    backup_filename = f"backup_{date_str}.zip"
+    backup_zip_path = os.path.join(dest_normal, backup_filename)
+
+    import zipfile
+    files_to_zip = [f for f in os.listdir(dest_normal) if os.path.isfile(os.path.join(dest_normal, f)) and not f.lower().startswith("backup_")]
+
+    if not files_to_zip:
+        if log_callback:
+            log_callback(f"Nenhum arquivo encontrado em '{dest_normal}' para realizar backup.")
+        return None
+
+    if log_callback:
+        log_callback(f"Iniciando backup de {len(files_to_zip)} arquivos da pasta '{dest_normal}' em '{backup_filename}' (Compressão Máxima)...")
+
+    try:
+        with zipfile.ZipFile(backup_zip_path, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zipf:
+            for fname in files_to_zip:
+                fpath = os.path.join(dest_normal, fname)
+                zipf.write(fpath, arcname=fname)
+
+        if log_callback:
+            log_callback(f"Backup compactado gerado com sucesso: {backup_filename}")
+        return backup_zip_path
+    except Exception as e:
+        if log_callback:
+            log_callback(f"Erro ao gerar backup da pasta '{dest_normal}': {e}")
+        return None
+
+
+def unzip_file(zip_path, extract_to_dir, log_callback=None):
+    """
+    Descompacta um arquivo .zip no diretório de destino especificado.
+    Trata erros de permissão se um executável estiver em execução.
+    """
+    import zipfile
+    os.makedirs(extract_to_dir, exist_ok=True)
+    zip_name = os.path.basename(zip_path)
+
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            for member in zip_ref.infolist():
+                if member.is_dir():
+                    continue
+                try:
+                    zip_ref.extract(member, extract_to_dir)
+                except PermissionError as pe:
+                    msg = f"[AVISO/PERMISSÃO] Erro ao extrair '{member.filename}' em '{extract_to_dir}': Arquivo bloqueado ou em uso. Feche o processo e tente novamente."
+                    if log_callback:
+                        log_callback(msg)
+                    raise Exception(msg)
+                except Exception as ex:
+                    msg = f"Erro ao extrair '{member.filename}': {ex}"
+                    if log_callback:
+                        log_callback(msg)
+                    raise ex
+
+        if log_callback:
+            log_callback(f"Arquivo '{zip_name}' descompactado com sucesso em '{extract_to_dir}'.")
+        return True
+    except Exception as e:
+        if log_callback:
+            log_callback(f"Falha na descompactação de '{zip_name}': {e}")
+        raise e
+
+extract_zip = unzip_file
+
+
+
+
